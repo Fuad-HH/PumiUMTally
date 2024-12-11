@@ -132,8 +132,8 @@ namespace pumiinopenmc {
         search_initial_elements();
     }
 
-    void PumiTallyImpl::move_to_next_location(double *particle_destinations, int8_t *flying, int64_t num_particles) {
-        assert(num_particles == pumi_ps_size);
+    void PumiTallyImpl::move_to_next_location(double *particle_destinations, int8_t *flying, int64_t size) {
+        assert(size == pumi_ps_size*3);
 
         // copy to device buffer
         copy_to_device_position_buffer(particle_destinations);
@@ -354,7 +354,7 @@ namespace pumiinopenmc {
 
     void PumiParticleAtElemBoundary::finalizeAndWritePumiFlux(const std::string& filename){
         Omega_h::Mesh* mesh = p_pumi_tally->p_picparts_->mesh();
-        auto normalized_flux = p_pumi_tally->p_pumi_particle_at_elem_boundary_handler->normalizeFlux(
+        const auto& normalized_flux = p_pumi_tally->p_pumi_particle_at_elem_boundary_handler->normalizeFlux(
                 *mesh);
         p_pumi_tally->full_mesh_.add_tag(Omega_h::REGION, "flux", 1, normalized_flux);
         Omega_h::vtk::write_parallel(filename, &p_pumi_tally->full_mesh_, 3);
@@ -546,12 +546,12 @@ namespace pumiinopenmc {
             : pimpl(std::make_unique<PumiTallyImpl>(mesh_filename, num_particles, argc, argv)) {
     }
 
-    void PumiTally::initialize_particle_location(double* init_particle_positions, int64_t num_particles){
-        pimpl->initialize_particle_location(init_particle_positions, num_particles);
+    void PumiTally::initialize_particle_location(double* init_particle_positions, int64_t size){
+        pimpl->initialize_particle_location(init_particle_positions, size);
     }
 
-    void PumiTally::move_to_next_location(double* particle_destinations, int8_t* flying, int64_t num_particles){
-        pimpl->move_to_next_location(particle_destinations, flying, num_particles);
+    void PumiTally::move_to_next_location(double* particle_destinations, int8_t* flying, int64_t size){
+        pimpl->move_to_next_location(particle_destinations, flying, size);
     }
 
     void PumiTally::write_pumi_tally_mesh() {
