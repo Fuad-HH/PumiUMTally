@@ -7,7 +7,7 @@
 #include <Omega_h_for.hpp>
 #include <Omega_h_library.hpp>
 
-TEST_CASE("Omega_h Host Array Test") {
+TEST_CASE("Omega_h Host Array Test: Zero Stride") {
     int argc = 0;
     char** argv = nullptr;
     auto omega_h_lib = Omega_h::Library(&argc, &argv);
@@ -30,4 +30,17 @@ TEST_CASE("Omega_h Host Array Test") {
     Kokkos::parallel_reduce(size, find_sum, sum_reducer);
 
     REQUIRE(properly_initialized == 7.0 * size);
+}
+
+TEST_CASE("Omega_h Host Array Test: Nonzero Stride") {
+    int argc = 0;
+    char** argv = nullptr;
+    auto omega_h_lib = Omega_h::Library(&argc, &argv);
+
+    int size = 10;
+    Omega_h::HostWrite<Omega_h::Real> test_host_array(size, 7.0, 2.0, "test_array");
+    for (int i = 0; i < test_host_array.size(); i++) {
+        printf("test_array[%d] = %f\n", i, test_host_array[i]);
+        REQUIRE(test_host_array[i] == 7.0 + 2.0 * i);
+    }
 }
