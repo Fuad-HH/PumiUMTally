@@ -25,12 +25,10 @@ endif()
 
 ####################### Headers and Sources #######################
 set(PUMITALLYOPENMC_HEADERS
-        src/pumitallyopenmc/testhostarray.hpp
         src/pumitallyopenmc/pumipic_particle_data_structure.h
 )
 
 set(PUMITALLYOPENMC_SOURCES
-        src/pumitallyopenmc/test.cpp
         src/pumitallyopenmc/pumipic_particle_data_structure.cpp
 )
 
@@ -102,11 +100,6 @@ else()
     )
 endif()
 
-
-#set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}")
-#set(CMAKE_BUILD_RPATH "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}")
-#set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
-
 install(TARGETS pumitallyopenmc
   EXPORT pumitallyopenmcTargets 
   LIBRARY DESTINATION   ${CMAKE_INSTALL_LIBDIR}
@@ -115,8 +108,6 @@ install(TARGETS pumitallyopenmc
   INCLUDES DESTINATION  ${CMAKE_INSTALL_INCLUDEDIR}
         PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/pumitallyopenmc
 )
-
-#install(FILES include/testhostarray.hpp DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 install(EXPORT pumitallyopenmcTargets
   FILE pumitallyopenmcTargets.cmake
