@@ -25,11 +25,9 @@ namespace pumiinopenmc {
     void pp_move_to_new_element(Omega_h::Mesh &mesh, PPPS *ptcls, Omega_h::Write<Omega_h::LO> &elem_ids,
                                 Omega_h::Write<Omega_h::LO> &ptcl_done,
                                 Omega_h::Write<Omega_h::LO> &lastExit);
-    PPPS* pp_create_particle_structure(Omega_h::Mesh mesh, pumipic::lid_t numPtcls);
-    //void set_pumipic_particle_structure_size(int openmc_particles_in_flight, int openmc_work_per_rank, int openmc_n_particles);
+    std::unique_ptr<PPPS> pp_create_particle_structure(Omega_h::Mesh mesh, pumipic::lid_t numPtcls);
     void start_pumi_particles_in_0th_element(Omega_h::Mesh& mesh, pumiinopenmc::PPPS* ptcls);
-    //Omega_h::Mesh* partition_pumipic_mesh();
-    //void create_and_initialize_pumi_particle_structure(Omega_h::Mesh* mesh);
+
 
     PumiTally::~PumiTally() = default;
 
@@ -45,7 +43,7 @@ namespace pumiinopenmc {
         void updatePrevXPoint(Omega_h::Write<Omega_h::Real> &xpoints);
 
         void evaluateFlux(PPPS *ptcls, Omega_h::Write<Omega_h::Real> &xpoints);
-        void finalizeAndWritePumiFlux(const std::string& filename);
+        void finalizeAndWritePumiFlux(Omega_h::Mesh& full_mesh, const std::string& filename);
         Omega_h::Reals normalizeFlux(Omega_h::Mesh &mesh);
 
         void mark_initial_as(bool initial);
@@ -53,7 +51,6 @@ namespace pumiinopenmc {
         bool initial_; // in initial run, flux is not tallied
         Omega_h::Write<Omega_h::Real> flux_;
         Omega_h::Write<Omega_h::Real> prev_xpoint_;
-        std::unique_ptr<PumiTallyImpl> p_pumi_tally;
     };
     // ------------------------------------------------------------------------------------------------//
 
@@ -63,11 +60,13 @@ namespace pumiinopenmc {
         int64_t pumi_ps_size        = 1000000; // hundred thousand
         std::string oh_mesh_fname;
 
-        PPPS *pumipic_ptcls         = nullptr;
-        pumipic::Library *pp_lib    = nullptr;
-        Omega_h::Mesh full_mesh_;
-        pumipic::Mesh *p_picparts_  = nullptr;
         Omega_h::Library oh_lib;
+        Omega_h::Mesh full_mesh_;
+
+        std::unique_ptr<pumipic::Library> pp_lib = nullptr;
+        std::unique_ptr<pumipic::Mesh> p_picparts_ = nullptr;
+        std::unique_ptr<PPPS> pumipic_ptcls = nullptr;
+
         long double pumipic_tol     = 1e-8;
         bool is_pumipic_initialized = false;
 
@@ -86,14 +85,7 @@ namespace pumiinopenmc {
         PumiTallyImpl(std::string& mesh_filename, int64_t num_particles, int& argc, char**& argv);
 
         // * Destructor
-        ~PumiTallyImpl() {
-            delete p_picparts_;
-            p_picparts_ = nullptr;
-            delete pumipic_ptcls;
-            pumipic_ptcls = nullptr;
-            delete pp_lib;
-            pp_lib = nullptr;
-        }
+        ~PumiTallyImpl() = default;
 
         // Functions
         void create_and_initialize_pumi_particle_structure(Omega_h::Mesh* mesh);
@@ -122,7 +114,7 @@ namespace pumiinopenmc {
         device_in_adv_que_  = Omega_h::Write        <Omega_h::I8>   (pumi_ps_size, 0, "device_in_adv_que");
 
         load_pumipic_mesh_and_init_particles(argc, argv);
-        start_pumi_particles_in_0th_element(*p_picparts_->mesh(), pumipic_ptcls);
+        start_pumi_particles_in_0th_element(*p_picparts_->mesh(), pumipic_ptcls.get());
     }
 
     void PumiTallyImpl::initialize_particle_location(double *init_particle_positions, int64_t size) {
@@ -158,13 +150,13 @@ namespace pumiinopenmc {
                 in_flight(pid) = device_in_adv_que_l[pid];
             }
         };
-        pumipic::parallel_for(pumipic_ptcls, set_particle_dest, "set particle position as dest");
+        pumipic::parallel_for(pumipic_ptcls.get(), set_particle_dest, "set particle position as dest");
 
         search_and_rebuild(false);
     }
 
     void PumiTallyImpl::write_pumi_tally_mesh() {
-        p_pumi_particle_at_elem_boundary_handler->finalizeAndWritePumiFlux("fluxresult.vtk");
+        p_pumi_particle_at_elem_boundary_handler->finalizeAndWritePumiFlux(full_mesh_, "fluxresult.vtk");
     }
 
     void PumiTallyImpl::copy_flying_flag(const int8_t *flying) {
@@ -191,7 +183,7 @@ namespace pumiinopenmc {
                 in_flight(pid) = 1;
             }
         };
-        pumipic::parallel_for(pumipic_ptcls, set_particle_dest, "set initial position as dest");
+        pumipic::parallel_for(pumipic_ptcls.get(), set_particle_dest, "set initial position as dest");
 
         // *initial* build and search to find the initial elements of the particles
         search_and_rebuild(true);
@@ -214,7 +206,7 @@ namespace pumiinopenmc {
 
     void PumiTallyImpl::init_pumi_libs(int& argc, char**& argv)
     {
-        pp_lib = new pumipic::Library(&argc, &argv);
+        pp_lib = std::make_unique<pumipic::Library>(&argc, &argv);
         oh_lib = pp_lib->omega_h_lib();
     }
 
@@ -352,12 +344,10 @@ namespace pumiinopenmc {
         return Omega_h::Reals(normalized_flux);
     }
 
-    void PumiParticleAtElemBoundary::finalizeAndWritePumiFlux(const std::string& filename){
-        Omega_h::Mesh* mesh = p_pumi_tally->p_picparts_->mesh();
-        const auto& normalized_flux = p_pumi_tally->p_pumi_particle_at_elem_boundary_handler->normalizeFlux(
-                *mesh);
-        p_pumi_tally->full_mesh_.add_tag(Omega_h::REGION, "flux", 1, normalized_flux);
-        Omega_h::vtk::write_parallel(filename, &p_pumi_tally->full_mesh_, 3);
+    void PumiParticleAtElemBoundary::finalizeAndWritePumiFlux(Omega_h::Mesh& full_mesh, const std::string& filename){
+        const auto& normalized_flux = normalizeFlux(full_mesh);
+        full_mesh.add_tag(Omega_h::REGION, "flux", 1, normalized_flux);
+        Omega_h::vtk::write_parallel(filename, &full_mesh, 3);
     }
 
     void pumiUpdatePtclPositions(PPPS *ptcls) {
@@ -396,7 +386,7 @@ namespace pumiinopenmc {
             printf("ERROR: Mesh is empty\n");
         }
 
-        bool isFoundAll = pumipic::particle_search(*p_picparts_->mesh(), pumipic_ptcls,
+        bool isFoundAll = pumipic::particle_search(*p_picparts_->mesh(), pumipic_ptcls.get(),
                                                    orig, dest, pid, elem_ids_, inter_faces_,
                                                    inter_points_, maxLoops, *p_pumi_particle_at_elem_boundary_handler);
         if (!isFoundAll){
@@ -405,11 +395,11 @@ namespace pumiinopenmc {
         if (!initial) {
             p_pumi_particle_at_elem_boundary_handler->updatePrevXPoint(inter_points_);
         }
-        pumiRebuild(p_picparts_, pumipic_ptcls, elem_ids_);
+        pumiRebuild(p_picparts_.get(), pumipic_ptcls.get(), elem_ids_);
     }
 
 
-    PPPS* pp_create_particle_structure(Omega_h::Mesh mesh, pumipic::lid_t numPtcls){
+    std::unique_ptr<PPPS> pp_create_particle_structure(Omega_h::Mesh mesh, pumipic::lid_t numPtcls){
         Omega_h::Int ne = mesh.nelems();
         pumiinopenmc::PPPS::kkLidView ptcls_per_elem("ptcls_per_elem", ne);
         pumiinopenmc::PPPS::kkGidView element_gids("element_gids", ne);
@@ -426,16 +416,14 @@ namespace pumiinopenmc {
 
 #ifdef PUMI_USE_KOKKOS_CUDA
         printf("PumiPIC Using GPU for simulation...\n");
-  policy =
-    Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace>(10000, 32);
+        policy = Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace>(10000, 32);
 #else
         printf("PumiPIC Using CPU for simulation...\n");
         policy = Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace>(10000, Kokkos::AUTO());
 #endif
 
-        // needs pumipic with cabana
-        pumiinopenmc::PPPS *ptcls =
-                new pumipic::DPS<pumiinopenmc::PPParticle>(policy, ne, numPtcls, ptcls_per_elem, element_gids);
+        auto ptcls = std::make_unique<pumipic::DPS<pumiinopenmc::PPParticle>>(policy, ne, numPtcls,
+                ptcls_per_elem, element_gids);
 
         return ptcls;
     }
@@ -503,7 +491,8 @@ namespace pumiinopenmc {
         // all the particles are initialized in element 0 to do an initial search to
         // find the starting locations
         // of the openmc given particles.
-        p_picparts_ = new pumipic::Mesh(full_mesh_, Omega_h::LOs(owners));
+        //p_picparts_ = new pumipic::Mesh(full_mesh_, Omega_h::LOs(owners));
+        p_picparts_ = std::make_unique<pumipic::Mesh>(full_mesh_, Omega_h::LOs(owners));
         printf("PumiPIC mesh partitioned\n");
         Omega_h::Mesh *mesh = p_picparts_->mesh();
         return mesh;
@@ -512,7 +501,7 @@ namespace pumiinopenmc {
     void PumiTallyImpl::create_and_initialize_pumi_particle_structure(Omega_h::Mesh* mesh)
     {
         pumipic_ptcls = pp_create_particle_structure(*mesh, pumi_ps_size);
-        start_pumi_particles_in_0th_element(*mesh, pumipic_ptcls);
+        start_pumi_particles_in_0th_element(*mesh, pumipic_ptcls.get());
         p_pumi_particle_at_elem_boundary_handler =
                 std::make_unique<pumiinopenmc::PumiParticleAtElemBoundary>(mesh->nelems(),
                                                                            pumipic_ptcls->capacity());
