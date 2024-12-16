@@ -12,7 +12,23 @@
 #include <Omega_h_mesh.hpp>
 #include <pumipic_mesh.hpp>
 
+#include <chrono>
+
 namespace pumiinopenmc {
+    struct TallyTimes{
+        double initialization_time = 0.0;
+        double total_time_to_tally = 0.0;
+        double vtk_file_write_time = 0.0;
+
+        void print_times() const{
+            printf("\n");
+            printf("[TIME] Initialization time     : %f seconds\n", initialization_time);
+            printf("[TIME] Total time to tally     : %f seconds\n", total_time_to_tally);
+            printf("[TIME] VTK file write time     : %f seconds\n", vtk_file_write_time);
+            printf("[TIME] Total PumiPic time      : %f seconds\n", initialization_time + total_time_to_tally + vtk_file_write_time);
+        }
+    };
+
     // ------------------------------------------------------------------------------------------------//
     // * Data structure for PumiPic
     // Particle: origin, destination, particle_id, in_advance_particle_queue
@@ -81,11 +97,15 @@ namespace pumiinopenmc {
         Omega_h::HostWrite<Omega_h::I8> host_in_adv_que_;
         Omega_h::Write<Omega_h::I8> device_in_adv_que_;
 
+        TallyTimes tally_times;
+
         // * Constructor
         PumiTallyImpl(std::string& mesh_filename, int64_t num_particles, int& argc, char**& argv);
 
         // * Destructor
-        ~PumiTallyImpl() = default;
+        ~PumiTallyImpl() {
+            Kokkos::finalize();
+        }
 
         // Functions
         void create_and_initialize_pumi_particle_structure(Omega_h::Mesh* mesh);
@@ -536,15 +556,31 @@ namespace pumiinopenmc {
     }
 
     void PumiTally::initialize_particle_location(double* init_particle_positions, int64_t size){
+        auto start_time = std::chrono::steady_clock::now();
+
         pimpl->initialize_particle_location(init_particle_positions, size);
+
+        std::chrono::duration<double> elapsed_seconds = std::chrono::steady_clock::now() - start_time;
+        pimpl->tally_times.initialization_time = elapsed_seconds.count();
     }
 
     void PumiTally::move_to_next_location(double* particle_destinations, int8_t* flying, int64_t size){
+        auto start_time = std::chrono::steady_clock::now();
+
         pimpl->move_to_next_location(particle_destinations, flying, size);
+
+        std::chrono::duration<double> elapsed_seconds = std::chrono::steady_clock::now() - start_time;
+        pimpl->tally_times.total_time_to_tally += elapsed_seconds.count();
     }
 
     void PumiTally::write_pumi_tally_mesh() {
+        auto start_time = std::chrono::steady_clock::now();
+
         pimpl->write_pumi_tally_mesh();
+
+        std::chrono::duration<double> elapsed_seconds = std::chrono::steady_clock::now() - start_time;
+        pimpl->tally_times.vtk_file_write_time = elapsed_seconds.count();
+        pimpl->tally_times.print_times();
     }
 
 } // namespace pumiinopenmc
