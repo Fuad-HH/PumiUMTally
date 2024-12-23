@@ -117,7 +117,8 @@ namespace pumiinopenmc {
         void initialize_particle_location(double* init_particle_positions, int64_t size);
         void move_to_next_location(double* particle_destinations, int8_t* flying, int64_t num_particles);
         void write_pumi_tally_mesh();
-        void copy_to_device_position_buffer(const double *init_particle_positions);
+        [[maybe_unused]] void copy_to_device_position_buffer(const double *init_particle_positions);
+        void copy_data_to_device(double *init_particle_positions);
         void search_initial_elements();
 
         void copy_flying_flag(const int8_t *flying);
@@ -140,7 +141,7 @@ namespace pumiinopenmc {
     void PumiTallyImpl::initialize_particle_location(double *init_particle_positions, int64_t size) {
         // copy to host buffer
         assert(size == pumi_ps_size*3);
-        copy_to_device_position_buffer(init_particle_positions);
+        copy_data_to_device(init_particle_positions);
         search_initial_elements();
     }
 
@@ -148,7 +149,7 @@ namespace pumiinopenmc {
         assert(size == pumi_ps_size*3);
 
         // copy to device buffer
-        copy_to_device_position_buffer(particle_destinations);
+        copy_data_to_device(particle_destinations);
         // copy fly to device buffer
         copy_flying_flag(flying);
 
@@ -210,6 +211,7 @@ namespace pumiinopenmc {
         is_pumipic_initialized = true;
     }
 
+    [[maybe_unused]] [[deprecated]]
     void PumiTallyImpl::copy_to_device_position_buffer(const double *init_particle_positions) {
         for (int64_t pid = 0; pid < pumi_ps_size; pid++) {
             host_pos_buffer_[pid * 3 + 0] = init_particle_positions[pid * 3 + 0];
@@ -219,6 +221,16 @@ namespace pumiinopenmc {
 
         // copy to device buffer
         device_pos_buffer_ = Omega_h::Write<Omega_h::Real>(host_pos_buffer_);
+    }
+
+    void PumiTallyImpl::copy_data_to_device(double *init_particle_positions) {
+        Kokkos::View<Omega_h::Real*, Kokkos::HostSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged> >
+                host_pos_view(init_particle_positions, pumi_ps_size * 3);
+
+        Kokkos::View<Omega_h::Real*, PPExeSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged> >
+                device_pos_view(device_pos_buffer_.data(), pumi_ps_size * 3);
+
+        Kokkos::deep_copy(device_pos_view, host_pos_view);
     }
 
 
@@ -561,7 +573,7 @@ namespace pumiinopenmc {
         pimpl->initialize_particle_location(init_particle_positions, size);
 
         std::chrono::duration<double> elapsed_seconds = std::chrono::steady_clock::now() - start_time;
-        pimpl->tally_times.initialization_time = elapsed_seconds.count();
+        pimpl->tally_times.initialization_time += elapsed_seconds.count();
     }
 
     void PumiTally::move_to_next_location(double* particle_destinations, int8_t* flying, int64_t size){
@@ -579,7 +591,7 @@ namespace pumiinopenmc {
         pimpl->write_pumi_tally_mesh();
 
         std::chrono::duration<double> elapsed_seconds = std::chrono::steady_clock::now() - start_time;
-        pimpl->tally_times.vtk_file_write_time = elapsed_seconds.count();
+        pimpl->tally_times.vtk_file_write_time += elapsed_seconds.count();
         pimpl->tally_times.print_times();
     }
 
