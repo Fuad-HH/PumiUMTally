@@ -85,6 +85,7 @@ namespace pumiinopenmc {
 
         long double pumipic_tol     = 1e-8;
         bool is_pumipic_initialized = false;
+        int64_t iter_count_         = 0;
 
         std::unique_ptr<PumiParticleAtElemBoundary> p_pumi_particle_at_elem_boundary_handler;
 
@@ -112,10 +113,10 @@ namespace pumiinopenmc {
         void load_pumipic_mesh_and_init_particles(int& argc, char**& argv);
         Omega_h::Mesh* partition_pumipic_mesh();
         void init_pumi_libs(int &argc, char **&argv);
-        void search_and_rebuild(bool initial);
+        void search_and_rebuild(bool initial, const bool migrate = true);
         void read_pumipic_lib_and_full_mesh(int& argc, char**& argv);
         void initialize_particle_location(double* init_particle_positions, int64_t size);
-        void move_to_next_location(double* particle_destinations, int8_t* flying, int64_t num_particles);
+        void move_to_next_location(double* particle_destinations, int8_t* flying, int64_t size);
         void write_pumi_tally_mesh();
         [[maybe_unused]] void copy_to_device_position_buffer(const double *init_particle_positions);
         void copy_data_to_device(double *init_particle_positions);
@@ -173,7 +174,9 @@ namespace pumiinopenmc {
         };
         pumipic::parallel_for(pumipic_ptcls.get(), set_particle_dest, "set particle position as dest");
 
-        search_and_rebuild(false);
+        bool migrate = iter_count_%10 == 0;
+        iter_count_++;
+        search_and_rebuild(false, migrate);
     }
 
     void PumiTallyImpl::write_pumi_tally_mesh() {
@@ -207,7 +210,7 @@ namespace pumiinopenmc {
         pumipic::parallel_for(pumipic_ptcls.get(), set_particle_dest, "set initial position as dest");
 
         // *initial* build and search to find the initial elements of the particles
-        search_and_rebuild(true);
+        search_and_rebuild(true, true);
         is_pumipic_initialized = true;
     }
 
@@ -396,15 +399,17 @@ namespace pumiinopenmc {
         ps::parallel_for(ptcls, updatePtclPos);
     }
 
-    void pumiRebuild(pumipic::Mesh* picparts, PPPS *ptcls, Omega_h::Write<Omega_h::LO>& elem_ids) {
+    void pumiRebuild(pumipic::Mesh* picparts, PPPS *ptcls, Omega_h::Write<Omega_h::LO>& elem_ids, const bool migrate = true) {
         pumiUpdatePtclPositions(ptcls);
-        pumipic::migrate_lb_ptcls(*picparts, ptcls, elem_ids, 1.05);
+        if (migrate) {
+            pumipic::migrate_lb_ptcls(*picparts, ptcls, elem_ids, 1.05);
+        }
         pumipic::printPtclImb(ptcls);
     }
 
     // search and update parent elements
     //! @param initial initial search finds the initial location of the particles and doesn't tally
-    void PumiTallyImpl::search_and_rebuild(bool initial){
+    void PumiTallyImpl::search_and_rebuild(bool initial, const bool migrate) {
         // initial cannot be false when is_pumipic_initialized is false
         // may fail if simulated more than one batch
         assert((is_pumipic_initialized == false && initial == true) || (is_pumipic_initialized == true && initial == false));
@@ -427,7 +432,7 @@ namespace pumiinopenmc {
         if (!initial) {
             p_pumi_particle_at_elem_boundary_handler->updatePrevXPoint(inter_points_);
         }
-        pumiRebuild(p_picparts_.get(), pumipic_ptcls.get(), elem_ids_);
+        pumiRebuild(p_picparts_.get(), pumipic_ptcls.get(), elem_ids_, migrate);
     }
 
 
