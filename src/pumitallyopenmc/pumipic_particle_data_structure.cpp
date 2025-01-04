@@ -177,7 +177,7 @@ namespace pumiinopenmc {
         };
         pumipic::parallel_for(pumipic_ptcls.get(), set_particle_dest, "set particle position as dest");
 
-        bool migrate = iter_count_%10 == 0;
+        bool migrate = iter_count_%100 == 0;
         iter_count_++;
         search_and_rebuild(false, migrate);
 #ifdef PUMI_MEASURE_TIME
@@ -412,8 +412,8 @@ namespace pumiinopenmc {
         pumiUpdatePtclPositions(ptcls);
         if (migrate) {
             pumipic::migrate_lb_ptcls(*picparts, ptcls, elem_ids, 1.05);
+            pumipic::printPtclImb(ptcls);
         }
-        pumipic::printPtclImb(ptcls);
     }
 
     // search and update parent elements
