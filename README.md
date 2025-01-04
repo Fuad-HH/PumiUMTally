@@ -13,13 +13,15 @@ elements to be used for tallies with tracklength estimators.*
 
 
 ## Working Principle
-It works in the following way:
+The workflow is consisted of three steps:
 
 1. Copy origins and destinations and other necessary data of particles from the monte carlo transport code.
 2. Move the particles to the destination.
 3. Tally the particles.
 
+The following diagram shows the workflow in detail:
 
+![Detalied Exaplanation of Library Public Methods](images/public_methods_explanation.svg)
 ---
 
 ## Compilation
