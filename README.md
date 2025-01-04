@@ -26,10 +26,12 @@ It works in the following way:
 Needs the following dependencies:
 
 1. [Pumi-PIC](https://github.com/Fuad-HH/pumi-pic/tree/add_functor_to_search_mesh)
+> [!IMPORTANT]
+> Only the `add_functor_to_search_mesh` branch will work on this. It can be compiled as directed by [PumiPIC Wiki](https://github.com/SCOREC/pumi-pic/wiki).
 
-Note: Now, only `add_functor_to_search_mesh` branch will only work for this. It can be compiled as directed by [PumiPIC Wiki](https://github.com/SCOREC/pumi-pic/wiki).
-
-2. [Catch2](https://github.com/catchorg/Catch2) (optional for testing)
+2. [Catch2](https://github.com/catchorg/Catch2)
+> [!NOTE]
+> Only when testing is enabled.
 
 ### Compilation on SCOREC Machines (RHEL 9)
 
