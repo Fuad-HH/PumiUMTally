@@ -7,6 +7,7 @@ include(GNUInstallDirs)
 option(BUILD_SHARED_LIBS                    "Build shared libraries"        ON)
 option(PUMITALLYOPENMC_ENABLE_TESTS         "Enable tests"                  ON)
 option(PUMI_USE_KOKKOS_CUDA                 "Use CUDA"                      OFF)
+option(PUMI_MEASURE_TIME                    "Measure time"                  OFF)
 ###################################################################
 
 ############################ CLANG ################################
@@ -63,6 +64,15 @@ if(PUMI_USE_KOKKOS_CUDA)
 endif()
 set_target_properties(pumitallyopenmc PROPERTIES
     PUBLIC_HEADER "${PUMITALLYOPENMC_HEADERS}")
+
+if(PUMI_MEASURE_TIME)
+    string(TOUPPER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_UPPER)
+    if(CMAKE_BUILD_TYPE_UPPER STREQUAL "DEBUG")
+        message(WARNING "Time measurement won't work properly in Debug mode")
+    endif()
+
+    target_compile_definitions(pumitallyopenmc PRIVATE -DPUMI_MEASURE_TIME)
+endif()
 ###################################################################
 
 

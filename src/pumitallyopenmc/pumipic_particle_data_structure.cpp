@@ -144,6 +144,9 @@ namespace pumiinopenmc {
         assert(size == pumi_ps_size*3);
         copy_data_to_device(init_particle_positions);
         search_initial_elements();
+#ifdef PUMI_MEASURE_TIME
+        Kokkos::fence();
+#endif
     }
 
     void PumiTallyImpl::move_to_next_location(double *particle_destinations, int8_t *flying, int64_t size) {
@@ -177,10 +180,16 @@ namespace pumiinopenmc {
         bool migrate = iter_count_%10 == 0;
         iter_count_++;
         search_and_rebuild(false, migrate);
+#ifdef PUMI_MEASURE_TIME
+        Kokkos::fence();
+#endif
     }
 
     void PumiTallyImpl::write_pumi_tally_mesh() {
         p_pumi_particle_at_elem_boundary_handler->finalizeAndWritePumiFlux(full_mesh_, "fluxresult.vtk");
+#ifdef PUMI_MEASURE_TIME
+        Kokkos::fence();
+#endif
     }
 
     void PumiTallyImpl::copy_flying_flag(const int8_t *flying) {
