@@ -29,7 +29,7 @@ namespace pumiinopenmc {
         void initialize_particle_location(double* init_particle_positions, int64_t size);
 
         // Get the new destination of the particles and move the particles to the new destination
-        void move_to_next_location(double* particle_destinations, int8_t* flying, int64_t size);
+        void move_to_next_location(double* particle_destinations, int8_t* flying, double* weights, int64_t size);
 
         // Normalize the tally and write the tally array to vtk file
         // Future: send the tally to openmc
