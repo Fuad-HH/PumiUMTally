@@ -20,16 +20,16 @@ namespace pumiinopenmc {
     // This is a pimpl class that contains the implementation of the PumiTallyImpl Struct (Future class)
     class PumiTally {
     public:
-        PumiTally(std::string& mesh_filename, int64_t num_particles, int& argc, char**& argv);
+        PumiTally(std::string &mesh_filename, int64_t num_particles, int &argc, char **&argv);
 
         // Public Functions
 
         // Initialize the particle locations by searching the initial positions of the particles
         // in the mesh for the first step
-        void initialize_particle_location(double* init_particle_positions, int64_t size);
+        void initialize_particle_location(double *init_particle_positions, int64_t size);
 
         // Get the new destination of the particles and move the particles to the new destination
-        void move_to_next_location(double* particle_destinations, int8_t* flying, double* weights, int64_t size);
+        void move_to_next_location(double *particle_destinations, int8_t *flying, double *weights, int64_t size);
 
         // Normalize the tally and write the tally array to vtk file
         // Future: send the tally to openmc
