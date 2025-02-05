@@ -10,6 +10,7 @@
 // - Sections are not working for some reason. Saying using MPI functions before or after MPI init or finalize
 // - sections are marked with comments for now
 // - TODO Remove including cpp by creating another internal header
+// - Look at this gist to verify this in python: https://gist.github.com/Fuad-HH/5e0aed99f271617e283e9108091fb1cb
 // *****************************************************************************************************//
 
 // TODO: Remove it by having another header file
@@ -17,6 +18,10 @@
 
 bool is_close(const double a, const double b, double tol = 1e-8){
     return std::abs(a-b) < tol;
+}
+
+OMEGA_H_INLINE bool is_close_d(const double a, const double b, double tol = 1e-8){
+    return Kokkos::abs(a-b) < tol;
 }
 
 TEST_CASE("Test Impl Class Functions") {
@@ -103,4 +108,46 @@ TEST_CASE("Test Impl Class Functions") {
 
     //************************************ Checks Regarding Initializing Particle Locations ***********************//
     //*************************************************************************************************************//
+
+    // * Note: all 5 particles will start their journey as follows:
+    // ray_origin   =   [0.1, 0.4, 0.5] in cell 2
+    // ray_end      =   [1.1, 0.4, 0.5] passing through cells 2, 3, 4 and finally leaving the box
+    std::vector<double> init_particle_positions(num_ptcls*3);
+    for (int pid = 0; pid<num_ptcls; ++pid){
+        init_particle_positions[pid*3]      = 0.1;
+        init_particle_positions[pid*3+1]    = 0.4;
+        init_particle_positions[pid*3+2]    = 0.5;
+    }
+    p_pumi_tallyimpl->initialize_particle_location(init_particle_positions.data(), init_particle_positions.size());
+
+    // * Check if particle positions are copied properly in the device
+    // ? is it okay to check with OMEGA_H_CHECK
+    auto device_pos_buffer_l = p_pumi_tallyimpl->device_pos_buffer_;
+    auto check_device_init_pos = OMEGA_H_LAMBDA(int pid){
+        OMEGA_H_CHECK_PRINTF(is_close_d(device_pos_buffer_l[pid*3], 0.1), "Particle position copy to device error 0: %.16f %.16f\n",
+                             device_pos_buffer_l[pid*3], 0.1);
+        OMEGA_H_CHECK_PRINTF(is_close_d(device_pos_buffer_l[pid*3+1], 0.4), "Particle position copy to device error 0: %.16f %.16f\n",
+                             device_pos_buffer_l[pid*3+1], 0.4);
+        OMEGA_H_CHECK_PRINTF(is_close_d(device_pos_buffer_l[pid*3+2], 0.5), "Particle position copy to device error 0: %.16f %.16f\n",
+                             device_pos_buffer_l[pid*3+2], 0.5);
+    };
+    Omega_h::parallel_for(num_ptcls, check_device_init_pos, "Check if the init particle pos are copied to device correctly");
+
+    // * Check if all particles reached element 2
+    elem_ids_host = Omega_h::HostWrite<Omega_h::LO>(p_pumi_tallyimpl->elem_ids_);
+    for (int pid = 0; pid<num_ptcls; ++pid){
+        REQUIRE(elem_ids_host[pid] == 2);
+    }
+
+    // * The fluxes should be zero since the init doesn't calculate flux
+    auto flux_l = p_pumi_tallyimpl->p_pumi_particle_at_elem_boundary_handler->flux_;
+    Omega_h::HostWrite<Omega_h::Real> flux_host(flux_l);
+    REQUIRE(flux_host.size() == mesh.nelems());
+    for (int el = 0; el<flux_host.size(); ++el){
+        printf("Flux after init run %d[%.16f]\n", el, flux_host[el]);
+        REQUIRE(is_close(flux_host[el], 0.0));
+    }
+
+    //******************************* Checks Move to Next Location *************************************************//
+    //**************************************************************************************************************//
 }
