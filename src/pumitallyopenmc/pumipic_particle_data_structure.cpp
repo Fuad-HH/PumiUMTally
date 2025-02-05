@@ -105,12 +105,9 @@ namespace pumiinopenmc {
         Omega_h::Write<Omega_h::Real> inter_points_;
         Omega_h::Write<Omega_h::LO> inter_faces_;
 
-        Omega_h::HostWrite<Omega_h::Real> host_pos_buffer_;
         Omega_h::Write<Omega_h::Real> device_pos_buffer_;
-        Omega_h::HostWrite<Omega_h::I8> host_in_adv_que_;
         Omega_h::Write<Omega_h::I8> device_in_adv_que_;
         Omega_h::Write<Omega_h::Real> weights_;
-        Omega_h::HostWrite<Omega_h::Real> host_weights_;
 
         TallyTimes tally_times;
 
@@ -118,9 +115,7 @@ namespace pumiinopenmc {
         PumiTallyImpl(std::string &mesh_filename, int64_t num_particles, int &argc, char **&argv); // fixme extra &
 
         // * Destructor
-        ~PumiTallyImpl() {
-            Kokkos::finalize();
-        }
+        ~PumiTallyImpl() = default;
 
         // Functions
         void create_and_initialize_pumi_particle_structure(Omega_h::Mesh *mesh);
@@ -141,15 +136,13 @@ namespace pumiinopenmc {
 
         void write_pumi_tally_mesh();
 
-        [[maybe_unused]] void copy_to_device_position_buffer(const double *init_particle_positions);
-
         void copy_data_to_device(double *init_particle_positions);
 
         void search_initial_elements();
 
         void copy_and_reset_flying_flag(int8_t *flying);
 
-        void copy_weights(const double *weights);
+        void copy_weights(double *weights);
     };
 
     PumiTallyImpl::PumiTallyImpl(std::string &mesh_filename, int64_t num_particles, int &argc, char **&argv) {
@@ -158,14 +151,9 @@ namespace pumiinopenmc {
 
         elem_ids_ = Omega_h::Write<Omega_h::LO>(pumi_ps_size, 0, "element_ids");
 
-        host_pos_buffer_ = Omega_h::HostWrite<Omega_h::Real>(pumi_ps_size * 3, 0.0, 0, "host_pos_buffer");
         device_pos_buffer_ = Omega_h::Write<Omega_h::Real>(pumi_ps_size * 3, 0.0, "device_pos_buffer");
-        // flies if 1, 0 if not (default doesn't fly)
-        host_in_adv_que_ = Omega_h::HostWrite<Omega_h::I8>(pumi_ps_size, 0, 0, "host_in_adv_que");
         device_in_adv_que_ = Omega_h::Write<Omega_h::I8>(pumi_ps_size, 0, "device_in_adv_que");
-
-        weights_ = Omega_h::Write<Omega_h::Real>(pumi_ps_size, 0.0, "weights");
-        host_weights_ = Omega_h::HostWrite<Omega_h::Real>(pumi_ps_size, 0.0, 0, "host_weights");
+        weights_           = Omega_h::Write<Omega_h::Real>(pumi_ps_size, 0.0, "weights");
 
         // todo can track lengths be here?
 
@@ -231,22 +219,27 @@ namespace pumiinopenmc {
 
     void PumiTallyImpl::copy_and_reset_flying_flag(int8_t *flying) {
         // todo get the size too
+        auto device_in_adv_que_l = device_in_adv_que_;
+        Kokkos::View<Omega_h::I8 *, Kokkos::HostSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged> >
+                host_flying_view(flying, pumi_ps_size);
+        Kokkos::View<Omega_h::I8 *, PPExeSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged> >
+                device_flying_view(device_in_adv_que_l.data(), device_in_adv_que_l.size());
+        Kokkos::deep_copy(device_flying_view, host_flying_view);
+
         for (int64_t pid = 0; pid < pumi_ps_size; ++pid) {
-            host_in_adv_que_[pid] = flying[pid];
             // reset flying flag to zero
             flying[pid] = 0;
         }
-        device_in_adv_que_ = Omega_h::Write<Omega_h::I8>(host_in_adv_que_);
     }
 
-    void PumiTallyImpl::copy_weights(const double *weights) {
-        for (int64_t pid = 0; pid < pumi_ps_size; pid++) {
-            host_weights_[pid] = weights[pid];
-        }
-
+    void PumiTallyImpl::copy_weights(double *weights) {
         auto weights_l = weights_;
-        // TODO remove this extra copy: there are others like this too
-        weights_l = Omega_h::Write<Omega_h::Real>(host_weights_);
+        Kokkos::View<Omega_h::Real *, Kokkos::HostSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged> >
+        host_weights_view(weights, pumi_ps_size);
+        Kokkos::View<Omega_h::Real *, PPExeSpace, Kokkos::MemoryTraits<Kokkos::Unmanaged> >
+        device_weights_view(weights_l.data(), weights_l.size());
+
+        Kokkos::deep_copy(device_weights_view, host_weights_view);
 
         auto p_wgt = pumipic_ptcls->get<4>();
         auto copy_particle_weights = PS_LAMBDA(
@@ -280,18 +273,6 @@ namespace pumiinopenmc {
         // *initial* build and search to find the initial elements of the particles
         search_and_rebuild(true, true);
         is_pumipic_initialized = true;
-    }
-
-    [[maybe_unused]] [[deprecated]]
-    void PumiTallyImpl::copy_to_device_position_buffer(const double *init_particle_positions) {
-        for (int64_t pid = 0; pid < pumi_ps_size; pid++) {
-            host_pos_buffer_[pid * 3 + 0] = init_particle_positions[pid * 3 + 0];
-            host_pos_buffer_[pid * 3 + 1] = init_particle_positions[pid * 3 + 1];
-            host_pos_buffer_[pid * 3 + 2] = init_particle_positions[pid * 3 + 2];
-        }
-
-        // copy to device buffer
-        device_pos_buffer_ = Omega_h::Write<Omega_h::Real>(host_pos_buffer_);
     }
 
     void PumiTallyImpl::copy_data_to_device(double *init_particle_positions) {

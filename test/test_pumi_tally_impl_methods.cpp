@@ -5,6 +5,8 @@
 #include <Omega_h_build.hpp>
 #include <Omega_h_library.hpp>
 #include <Omega_h_vtk.hpp>
+
+// TODO: Remove it by having another header file
 #include "pumipic_particle_data_structure.cpp"
 
 TEST_CASE("Test Impl Class Functions") {
