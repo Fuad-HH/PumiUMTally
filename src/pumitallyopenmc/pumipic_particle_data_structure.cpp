@@ -363,12 +363,12 @@ namespace pumiinopenmc {
                                                 Omega_h::Write<Omega_h::LO> &lastExit,
                                                 Omega_h::Write<Omega_h::Real> &inter_points,
                                                 Omega_h::Write<Omega_h::LO> &ptcl_done) {
-        apply_boundary_condition(mesh, ptcls, elem_ids, ptcl_done, lastExit, inter_faces);
-        pp_move_to_new_element(mesh, ptcls, elem_ids, ptcl_done, lastExit);
         if (!initial_) {
             evaluateFlux(ptcls, inter_points, elem_ids, ptcl_done);
             updatePrevXPoint(inter_points);
         }
+        apply_boundary_condition(mesh, ptcls, elem_ids, ptcl_done, lastExit, inter_faces);
+        pp_move_to_new_element(mesh, ptcls, elem_ids, ptcl_done, lastExit);
     }
 
     void PumiParticleAtElemBoundary::mark_initial_as(bool initial) {

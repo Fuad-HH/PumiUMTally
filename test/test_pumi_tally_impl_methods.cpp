@@ -238,4 +238,91 @@ TEST_CASE("Test Impl Class Functions") {
         pumipic::parallel_for(p_pumi_tallyimpl->pumipic_ptcls.get(), check_copied_properties,
                               "check if data copied before move");
     }
+
+    {// * Check flux
+        // * Note: The particles are going through elems 2, 3, 4. The lengths are:
+        // 0.3, 0.1, and 0.5 (times 5 for 5 particles)
+        auto flux_local = p_pumi_tallyimpl->p_pumi_particle_at_elem_boundary_handler->flux_;
+        Omega_h::HostWrite<Omega_h::Real> flux_host (flux_local);
+        printf("The fluxes are %d[%f] %d[%f] %d[%f] %d[%f] %d[%f] %d[%f]", 0, flux_host[0], 1, flux_host[1], 2, flux_host[2], 3, flux_host[3], 4, flux_host[4], 5, flux_host[5]);
+        REQUIRE(is_close(flux_host[0], 0.0));
+        REQUIRE(is_close(flux_host[1], 0.0));
+        REQUIRE(is_close(flux_host[2], 0.3*num_ptcls));
+        REQUIRE(is_close(flux_host[3], 0.1*num_ptcls));
+        REQUIRE(is_close(flux_host[4], 0.5*num_ptcls));
+        REQUIRE(is_close(flux_host[5], 0.0));
+    }
+}
+
+TEST_CASE("Test Boundary Handler Struct and Operator"){
+    // ********************************** Set UP *********************************************************************//
+    auto lib = Omega_h::Library{};
+    auto world = lib.world();
+    // simplest 3D mesh
+    auto mesh =
+            Omega_h::build_box(world, OMEGA_H_SIMPLEX, 1, 1, 1, 1, 1, 1, false);
+    printf("[INFO] Mesh created with %d vertices and %d faces\n",
+           mesh.nverts(), mesh.nfaces());
+
+    // create particle structure with 5 particles
+    int num_ptcls = 5;
+
+    // TODO remove this read_write
+    int argc = 0;
+    char **argv;
+    std::string temp_file_name = "mesh.osh";
+    Omega_h::binary::write(temp_file_name, &mesh);
+    fprintf(stdout, "[INFO] Mesh written to file :%s\n", temp_file_name.c_str());
+
+
+    // create particle structure with 5 particles
+    std::unique_ptr<pumiinopenmc::PumiTallyImpl> p_pumi_tallyimpl = std::make_unique<pumiinopenmc::PumiTallyImpl>(
+            temp_file_name, num_ptcls,
+            argc, argv);
+    fprintf(stdout, "[INFO] Particle structure created successfully\n");
+
+    std::vector<double> init_particle_positions(num_ptcls * 3);
+    for (int pid = 0; pid < num_ptcls; ++pid) {
+        init_particle_positions[pid * 3] = 0.1;
+        init_particle_positions[pid * 3 + 1] = 0.4;
+        init_particle_positions[pid * 3 + 2] = 0.5;
+    }
+
+    // this particle structure will be used to check the operator()
+    p_pumi_tallyimpl->initialize_particle_location(init_particle_positions.data(), init_particle_positions.size());
+
+    {
+        {// *Check if elem_ids_ are 2 now
+            auto elem_ids_l = p_pumi_tallyimpl->elem_ids_;
+            Omega_h::HostWrite<Omega_h::LO> elem_id_h(elem_ids_l);
+            for (int pid = 0; pid < num_ptcls; ++pid) {
+                REQUIRE(elem_id_h[pid] == 2);
+            }
+        }
+
+        // initialize inter-faces
+
+        // initialize lastExit
+
+        {// test prev_xpoint
+            auto lastExit_l = p_pumi_tallyimpl->p_pumi_particle_at_elem_boundary_handler->prev_xpoint_;
+            Omega_h::HostWrite<Omega_h::Real> lastExit_host(lastExit_l);
+            REQUIRE(lastExit_host.size() == 3*p_pumi_tallyimpl->pumipic_ptcls->capacity());
+            // prev_xpoints should be the current positions
+        }
+
+        // initialize inter_points: should be the initial positions
+
+        // initialize ptcl_done
+        Omega_h::Write<Omega_h::LO> ptcl_done(num_ptcls, 0, "particle done flag");
+
+        {// * check how inter_points look like
+            auto inter_points_l = p_pumi_tallyimpl->inter_points_;
+            Omega_h::HostWrite<Omega_h::Real> inter_points_host(inter_points_l);
+            REQUIRE(inter_points_host.size() == 0); // uninitialized
+        }
+    }
+
+
+
 }
