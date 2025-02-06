@@ -16,12 +16,12 @@
 // TODO: Remove it by having another header file
 #include "pumipic_particle_data_structure.cpp"
 
-bool is_close(const double a, const double b, double tol = 1e-8){
-    return std::abs(a-b) < tol;
+bool is_close(const double a, const double b, double tol = 1e-8) {
+    return std::abs(a - b) < tol;
 }
 
-OMEGA_H_INLINE bool is_close_d(const double a, const double b, double tol = 1e-8){
-    return Kokkos::abs(a-b) < tol;
+OMEGA_H_INLINE bool is_close_d(const double a, const double b, double tol = 1e-8) {
+    return Kokkos::abs(a - b) < tol;
 }
 
 TEST_CASE("Test Impl Class Functions") {
@@ -162,18 +162,18 @@ TEST_CASE("Test Impl Class Functions") {
     //**************************************************************************************************************//
 
     // All the particles will now go to ray end
-    std::vector<double> particle_destination (num_ptcls*3);
-    std::vector<double> weights (num_ptcls, 1.0); // same weights
+    std::vector<double> particle_destination(num_ptcls * 3);
+    std::vector<double> weights(num_ptcls, 1.0); // same weights
 
-    for (int pid=0; pid<num_ptcls; ++pid){
-        particle_destination[pid*3]     = 1.1;
-        particle_destination[pid*3 + 1] = 0.4;
-        particle_destination[pid*3 + 2] = 0.5;
+    for (int pid = 0; pid < num_ptcls; ++pid) {
+        particle_destination[pid * 3] = 1.1;
+        particle_destination[pid * 3 + 1] = 0.4;
+        particle_destination[pid * 3 + 2] = 0.5;
     }
 
 
     { // * Check copy data to device and reset flying
-        std::vector<int8_t > flying (num_ptcls, 1); // all are flying now
+        std::vector<int8_t> flying(num_ptcls, 1); // all are flying now
 
         REQUIRE(particle_destination.size() == 3 * p_pumi_tallyimpl->pumi_ps_size);
         p_pumi_tallyimpl->copy_data_to_device(particle_destination.data());
@@ -199,13 +199,14 @@ TEST_CASE("Test Impl Class Functions") {
         }
     }
 
-    std::vector<int8_t > flying (num_ptcls, 1); // reset them again to 1
-    p_pumi_tallyimpl->move_to_next_location(particle_destination.data(), flying.data(), weights.data(), particle_destination.size());
+    std::vector<int8_t> flying(num_ptcls, 1); // reset them again to 1
+    p_pumi_tallyimpl->move_to_next_location(particle_destination.data(), flying.data(), weights.data(),
+                                            particle_destination.size());
 
     {// * Check if the particles correctly reaches element 4
         auto elem_ids_local = p_pumi_tallyimpl->elem_ids_;
-        Omega_h::HostWrite<Omega_h::LO> elem_ids_local_host (elem_ids_local);
-        for (int pid = 0; pid<num_ptcls; ++pid){
+        Omega_h::HostWrite<Omega_h::LO> elem_ids_local_host(elem_ids_local);
+        for (int pid = 0; pid < num_ptcls; ++pid) {
             printf("[INFO] Particles reached elem %d\n", elem_ids_local_host[pid]);
             REQUIRE(elem_ids_local_host[pid] == 4);
         }
@@ -216,17 +217,22 @@ TEST_CASE("Test Impl Class Functions") {
         auto particle_flyign = p_pumi_tallyimpl->pumipic_ptcls->get<3>();
         auto particle_weights = p_pumi_tallyimpl->pumipic_ptcls->get<4>();
         auto check_copied_properties = PS_LAMBDA(const auto &e, const auto &pid, const auto &mask) {
-            if (mask>0) {
+            if (mask > 0) {
                 printf("Particle new origin (%f, %f, %f), flying %d, weight %f\n", new_origin(pid, 0),
                        new_origin(pid, 1), new_origin(pid, 2),
                        particle_flyign(pid), particle_weights(pid));
                 // fixme The new position should be 1.0 rather than 1.1 since it goes out
-                OMEGA_H_CHECK_PRINTF(is_close_d(new_origin(pid, 0), 1.1), "Particle destination not copied properly %.16f\n", new_origin(pid, 0));
-                OMEGA_H_CHECK_PRINTF(is_close_d(new_origin(pid, 1), 0.4), "Particle destination not copied properly %.16f\n", new_origin(pid, 1));
-                OMEGA_H_CHECK_PRINTF(is_close_d(new_origin(pid, 2), 0.5), "Particle destination not copied properly %.16f\n", new_origin(pid, 2));
+                OMEGA_H_CHECK_PRINTF(is_close_d(new_origin(pid, 0), 1.1),
+                                     "Particle destination not copied properly %.16f\n", new_origin(pid, 0));
+                OMEGA_H_CHECK_PRINTF(is_close_d(new_origin(pid, 1), 0.4),
+                                     "Particle destination not copied properly %.16f\n", new_origin(pid, 1));
+                OMEGA_H_CHECK_PRINTF(is_close_d(new_origin(pid, 2), 0.5),
+                                     "Particle destination not copied properly %.16f\n", new_origin(pid, 2));
 
-                OMEGA_H_CHECK_PRINTF(particle_flyign(pid) == 1, "Particle flying not copied correctly, found %d\n", particle_flyign(pid));
-                OMEGA_H_CHECK_PRINTF(is_close_d(particle_weights(pid), 1.0), "Particle weight not copied properly, found %.16f\n", particle_weights(pid));
+                OMEGA_H_CHECK_PRINTF(particle_flyign(pid) == 1, "Particle flying not copied correctly, found %d\n",
+                                     particle_flyign(pid));
+                OMEGA_H_CHECK_PRINTF(is_close_d(particle_weights(pid), 1.0),
+                                     "Particle weight not copied properly, found %.16f\n", particle_weights(pid));
             }
         };
         pumipic::parallel_for(p_pumi_tallyimpl->pumipic_ptcls.get(), check_copied_properties,
