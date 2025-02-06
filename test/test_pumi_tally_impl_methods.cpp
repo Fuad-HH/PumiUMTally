@@ -243,18 +243,19 @@ TEST_CASE("Test Impl Class Functions") {
         // * Note: The particles are going through elems 2, 3, 4. The lengths are:
         // 0.3, 0.1, and 0.5 (times 5 for 5 particles)
         auto flux_local = p_pumi_tallyimpl->p_pumi_particle_at_elem_boundary_handler->flux_;
-        Omega_h::HostWrite<Omega_h::Real> flux_host (flux_local);
-        printf("The fluxes are %d[%f] %d[%f] %d[%f] %d[%f] %d[%f] %d[%f]", 0, flux_host[0], 1, flux_host[1], 2, flux_host[2], 3, flux_host[3], 4, flux_host[4], 5, flux_host[5]);
+        Omega_h::HostWrite<Omega_h::Real> flux_host(flux_local);
+        printf("The fluxes are %d[%f] %d[%f] %d[%f] %d[%f] %d[%f] %d[%f]", 0, flux_host[0], 1, flux_host[1], 2,
+               flux_host[2], 3, flux_host[3], 4, flux_host[4], 5, flux_host[5]);
         REQUIRE(is_close(flux_host[0], 0.0));
         REQUIRE(is_close(flux_host[1], 0.0));
-        REQUIRE(is_close(flux_host[2], 0.3*num_ptcls));
-        REQUIRE(is_close(flux_host[3], 0.1*num_ptcls));
-        REQUIRE(is_close(flux_host[4], 0.5*num_ptcls));
+        REQUIRE(is_close(flux_host[2], 0.3 * num_ptcls));
+        REQUIRE(is_close(flux_host[3], 0.1 * num_ptcls));
+        REQUIRE(is_close(flux_host[4], 0.5 * num_ptcls));
         REQUIRE(is_close(flux_host[5], 0.0));
     }
 }
 
-TEST_CASE("Test Boundary Handler Struct and Operator"){
+TEST_CASE("Test Boundary Handler Struct and Operator") {
     // ********************************** Set UP *********************************************************************//
     auto lib = Omega_h::Library{};
     auto world = lib.world();
@@ -307,7 +308,7 @@ TEST_CASE("Test Boundary Handler Struct and Operator"){
         {// test prev_xpoint
             auto lastExit_l = p_pumi_tallyimpl->p_pumi_particle_at_elem_boundary_handler->prev_xpoint_;
             Omega_h::HostWrite<Omega_h::Real> lastExit_host(lastExit_l);
-            REQUIRE(lastExit_host.size() == 3*p_pumi_tallyimpl->pumipic_ptcls->capacity());
+            REQUIRE(lastExit_host.size() == 3 * p_pumi_tallyimpl->pumipic_ptcls->capacity());
             // prev_xpoints should be the current positions
         }
 
@@ -322,7 +323,6 @@ TEST_CASE("Test Boundary Handler Struct and Operator"){
             REQUIRE(inter_points_host.size() == 0); // uninitialized
         }
     }
-
 
 
 }
