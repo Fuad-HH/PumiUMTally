@@ -445,10 +445,7 @@ namespace pumiinopenmc {
                                    orig[0], orig[1], orig[2], dest[0], dest[1], dest[2]);
                         }
 
-                        Omega_h::Real contribution = (segment_length / total_tracklength_l[pid]) * p_wgt(pid);
-                        if (segment_length > total_tracklength_l[pid]) {
-                            contribution = p_wgt(pid); // since logically contribution cannot be more than one
-                        }
+                        Omega_h::Real contribution = segment_length * p_wgt(pid);
 
                         Kokkos::atomic_add(&flux[elem_ids[pid]], contribution);
                     }

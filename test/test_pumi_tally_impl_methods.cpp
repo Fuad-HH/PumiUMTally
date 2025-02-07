@@ -166,7 +166,7 @@ TEST_CASE("Test Impl Class Functions") {
     std::vector<double> weights(num_ptcls, 1.0); // same weights
 
     for (int pid = 0; pid < num_ptcls; ++pid) {
-        particle_destination[pid * 3] = 1.1;
+        particle_destination[pid * 3] = 1.2;
         particle_destination[pid * 3 + 1] = 0.4;
         particle_destination[pid * 3 + 2] = 0.5;
     }
@@ -188,7 +188,7 @@ TEST_CASE("Test Impl Class Functions") {
         Omega_h::HostWrite<Omega_h::I8> particle_flying_l_host(particle_flying_l);
 
         for (int pid = 0; pid < num_ptcls; ++pid) {
-            REQUIRE(is_close(particle_destination_l_host[pid * 3], 1.1));
+            REQUIRE(is_close(particle_destination_l_host[pid * 3], 1.2));
             REQUIRE(is_close(particle_destination_l_host[pid * 3 + 1], 0.4));
             REQUIRE(is_close(particle_destination_l_host[pid * 3 + 2], 0.5));
 
@@ -199,9 +199,11 @@ TEST_CASE("Test Impl Class Functions") {
         }
     }
 
-    std::vector<int8_t> flying(num_ptcls, 1); // reset them again to 1
-    p_pumi_tallyimpl->move_to_next_location(particle_destination.data(), flying.data(), weights.data(),
-                                            particle_destination.size());
+    { // not a check, just move
+        std::vector<int8_t> flying(num_ptcls, 1); // reset them again to 1
+        p_pumi_tallyimpl->move_to_next_location(particle_destination.data(), flying.data(), weights.data(),
+                                                particle_destination.size());
+    }
 
     {// * Check if the particles correctly reaches element 4
         auto elem_ids_local = p_pumi_tallyimpl->elem_ids_;
@@ -244,7 +246,7 @@ TEST_CASE("Test Impl Class Functions") {
         // 0.3, 0.1, and 0.5 (times 5 for 5 particles)
         auto flux_local = p_pumi_tallyimpl->p_pumi_particle_at_elem_boundary_handler->flux_;
         Omega_h::HostWrite<Omega_h::Real> flux_host(flux_local);
-        printf("The fluxes are %d[%f] %d[%f] %d[%f] %d[%f] %d[%f] %d[%f]", 0, flux_host[0], 1, flux_host[1], 2,
+        printf("The fluxes are %d[%f] %d[%f] %d[%f] %d[%f] %d[%f] %d[%f]\n", 0, flux_host[0], 1, flux_host[1], 2,
                flux_host[2], 3, flux_host[3], 4, flux_host[4], 5, flux_host[5]);
         REQUIRE(is_close(flux_host[0], 0.0));
         REQUIRE(is_close(flux_host[1], 0.0));
@@ -252,6 +254,101 @@ TEST_CASE("Test Impl Class Functions") {
         REQUIRE(is_close(flux_host[3], 0.1 * num_ptcls));
         REQUIRE(is_close(flux_host[4], 0.5 * num_ptcls));
         REQUIRE(is_close(flux_host[5], 0.0));
+    }
+
+    {// * Check if flux is accumulated properly if particles *move again*
+        // ********************************************** setup ******************************************************//
+        // Note: particle 0 and 2 will move to two different locations
+        // starting from (1.0, 0.4, 0.5) in element 4 to (0.15, 0.05, 0.2) and (0.85, 0.05, 0.1)
+        // in 3 and 4 respectively
+        // Particle 0 intersects at [0.22727273 0.08181818 0.22727273] and 3 doesn't go out of 4
+        // now the weights are 2 and 0.5 respectively
+        Omega_h::HostWrite<double> next_positions(3*num_ptcls);
+        std::vector<int8_t> flying_flags(num_ptcls, 0);
+        std::vector<double> particle_weights(num_ptcls, 1);
+        for (int pid = 0; pid<num_ptcls; ++pid){
+            if (pid == 0){
+                next_positions[3*pid] = 0.15;
+                next_positions[3*pid+1] = 0.05;
+                next_positions[3*pid+2] = 0.20;
+
+                flying_flags[pid] = 1;
+                particle_weights[pid] = 2.0;
+            } else if (pid == 2){
+                next_positions[3*pid] = 0.85;
+                next_positions[3*pid+1] = 0.05;
+                next_positions[3*pid+2] = 0.10;
+
+                flying_flags[pid] = 1;
+                particle_weights[pid] = 0.5;
+            } else {
+                next_positions[3*pid] = 1.0;
+                next_positions[3*pid+1] = 0.4;
+                next_positions[3*pid+2] = 0.5;
+
+                flying_flags[pid] = 0;
+                particle_weights[pid] = 1;
+            }
+        }
+        p_pumi_tallyimpl->move_to_next_location(next_positions.data(), flying_flags.data(), particle_weights.data(), next_positions.size());
+        // ***********************************************************************************************************//
+
+        { // * check new origins
+            Omega_h::Write<double> new_positions_device(next_positions);
+            auto new_origin = p_pumi_tallyimpl->pumipic_ptcls->get<0>();
+            auto check_new_origin = PS_LAMBDA(int e, int pid, int mask){
+                if (mask>0){
+                    printf("New positions after 2nd Move pid %d(expected|found): %f|%f, %f|%f, %f|%f\n", pid,
+                           new_positions_device[pid*3], new_origin(pid,0),
+                           new_positions_device[pid*3+1], new_origin(pid,1),
+                           new_positions_device[pid*3+2], new_origin(pid,2));
+                    for (int i=0; i<3; i++) {
+                        OMEGA_H_CHECK_PRINTF(is_close_d(new_origin(pid, i), new_positions_device[pid * 3 + i]),
+                                             "Origin didn't update properly %d %d: %f ~= %f\n",
+                                             pid, i, new_origin(pid, i), new_positions_device[pid * 3 + 1]);
+                    }
+                }
+            };
+            pumipic::parallel_for(p_pumi_tallyimpl->pumipic_ptcls.get(), check_new_origin, "check new origins after 2nd move");
+            printf("2nd move transported successfully!\n");
+        }
+
+        {// check destination element
+            auto elem_id_local = p_pumi_tallyimpl->elem_ids_;
+            Omega_h::HostWrite<Omega_h::LO> elem_id_host(elem_id_local);
+            printf("After the 2nd move, the current ids are: %d, %d, %d, %d, %d\n",
+                   elem_id_host[0], elem_id_host[1], elem_id_host[2], elem_id_host[3],
+                   elem_id_host[4]);
+            REQUIRE(elem_id_host[0] == 3); // moves to 3
+            REQUIRE(elem_id_host[1] == 4);
+            REQUIRE(elem_id_host[2] == 4); // remains inside 4
+            REQUIRE(elem_id_host[3] == 4);
+            REQUIRE(elem_id_host[4] == 4);
+        }
+
+        {//* Check flux
+            //* note:
+            //* particle 3s contributions will go to element 4 and 3
+            //* particle 5's contribution will go to element 4 only
+            //* segment lengths of 3 are: 0.8790232192610158 and 0.08793076822136835 in 4 and 3 respectively
+            //* segment length of 5 is:b 0.552268050859363 in 4
+            auto flux_local = p_pumi_tallyimpl->p_pumi_particle_at_elem_boundary_handler->flux_;
+            Omega_h::HostWrite<Omega_h::Real> flux_host(flux_local);
+            Omega_h::HostWrite<Omega_h::Real> flux_expected(flux_local);
+            flux_expected[3] = 0.1 * num_ptcls + 0.08790490988459178*2.0;
+            flux_expected[4] = 0.5 * num_ptcls + 0.879049070406094*2.0 + 0.552268050859363*0.5;
+
+            printf("The fluxes after 2nd move \nelem_id[found, expected] \n%d[%f,%f] \n%d[%f,%f] \n%d[%f,%f] \n%d[%f,%f] \n%d[%f,%f] \n%d[%f,%f]\n",
+                   0, flux_host[0], flux_expected[0], 1, flux_host[1], flux_expected[1],
+                   2, flux_host[2], flux_expected[2], 3, flux_host[3], flux_expected[3],
+                   4, flux_host[4], flux_expected[4], 5, flux_host[5], flux_expected[5]);
+            REQUIRE(is_close(flux_host[0], flux_expected[0]));
+            REQUIRE(is_close(flux_host[1], flux_expected[1]));
+            REQUIRE(is_close(flux_host[2], flux_expected[2]));
+            REQUIRE(is_close(flux_host[3], flux_expected[3]));
+            REQUIRE(is_close(flux_host[4], flux_expected[4]));
+            REQUIRE(is_close(flux_host[5], flux_expected[5]));
+        }
     }
 }
 
