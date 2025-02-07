@@ -263,53 +263,55 @@ TEST_CASE("Test Impl Class Functions") {
         // in 3 and 4 respectively
         // Particle 0 intersects at [0.22727273 0.08181818 0.22727273] and 3 doesn't go out of 4
         // now the weights are 2 and 0.5 respectively
-        Omega_h::HostWrite<double> next_positions(3*num_ptcls);
+        Omega_h::HostWrite<double> next_positions(3 * num_ptcls);
         std::vector<int8_t> flying_flags(num_ptcls, 0);
         std::vector<double> particle_weights(num_ptcls, 1);
-        for (int pid = 0; pid<num_ptcls; ++pid){
-            if (pid == 0){
-                next_positions[3*pid] = 0.15;
-                next_positions[3*pid+1] = 0.05;
-                next_positions[3*pid+2] = 0.20;
+        for (int pid = 0; pid < num_ptcls; ++pid) {
+            if (pid == 0) {
+                next_positions[3 * pid] = 0.15;
+                next_positions[3 * pid + 1] = 0.05;
+                next_positions[3 * pid + 2] = 0.20;
 
                 flying_flags[pid] = 1;
                 particle_weights[pid] = 2.0;
-            } else if (pid == 2){
-                next_positions[3*pid] = 0.85;
-                next_positions[3*pid+1] = 0.05;
-                next_positions[3*pid+2] = 0.10;
+            } else if (pid == 2) {
+                next_positions[3 * pid] = 0.85;
+                next_positions[3 * pid + 1] = 0.05;
+                next_positions[3 * pid + 2] = 0.10;
 
                 flying_flags[pid] = 1;
                 particle_weights[pid] = 0.5;
             } else {
-                next_positions[3*pid] = 1.0;
-                next_positions[3*pid+1] = 0.4;
-                next_positions[3*pid+2] = 0.5;
+                next_positions[3 * pid] = 1.0;
+                next_positions[3 * pid + 1] = 0.4;
+                next_positions[3 * pid + 2] = 0.5;
 
                 flying_flags[pid] = 0;
                 particle_weights[pid] = 1;
             }
         }
-        p_pumi_tallyimpl->move_to_next_location(next_positions.data(), flying_flags.data(), particle_weights.data(), next_positions.size());
+        p_pumi_tallyimpl->move_to_next_location(next_positions.data(), flying_flags.data(), particle_weights.data(),
+                                                next_positions.size());
         // ***********************************************************************************************************//
 
         { // * check new origins
             Omega_h::Write<double> new_positions_device(next_positions);
             auto new_origin = p_pumi_tallyimpl->pumipic_ptcls->get<0>();
-            auto check_new_origin = PS_LAMBDA(int e, int pid, int mask){
-                if (mask>0){
+            auto check_new_origin = PS_LAMBDA(int e, int pid, int mask) {
+                if (mask > 0) {
                     printf("New positions after 2nd Move pid %d(expected|found): %f|%f, %f|%f, %f|%f\n", pid,
-                           new_positions_device[pid*3], new_origin(pid,0),
-                           new_positions_device[pid*3+1], new_origin(pid,1),
-                           new_positions_device[pid*3+2], new_origin(pid,2));
-                    for (int i=0; i<3; i++) {
+                           new_positions_device[pid * 3], new_origin(pid, 0),
+                           new_positions_device[pid * 3 + 1], new_origin(pid, 1),
+                           new_positions_device[pid * 3 + 2], new_origin(pid, 2));
+                    for (int i = 0; i < 3; i++) {
                         OMEGA_H_CHECK_PRINTF(is_close_d(new_origin(pid, i), new_positions_device[pid * 3 + i]),
                                              "Origin didn't update properly %d %d: %f ~= %f\n",
                                              pid, i, new_origin(pid, i), new_positions_device[pid * 3 + 1]);
                     }
                 }
             };
-            pumipic::parallel_for(p_pumi_tallyimpl->pumipic_ptcls.get(), check_new_origin, "check new origins after 2nd move");
+            pumipic::parallel_for(p_pumi_tallyimpl->pumipic_ptcls.get(), check_new_origin,
+                                  "check new origins after 2nd move");
             printf("2nd move transported successfully!\n");
         }
 
@@ -335,8 +337,8 @@ TEST_CASE("Test Impl Class Functions") {
             auto flux_local = p_pumi_tallyimpl->p_pumi_particle_at_elem_boundary_handler->flux_;
             Omega_h::HostWrite<Omega_h::Real> flux_host(flux_local);
             Omega_h::HostWrite<Omega_h::Real> flux_expected(flux_local);
-            flux_expected[3] = 0.1 * num_ptcls + 0.08790490988459178*2.0;
-            flux_expected[4] = 0.5 * num_ptcls + 0.879049070406094*2.0 + 0.552268050859363*0.5;
+            flux_expected[3] = 0.1 * num_ptcls + 0.08790490988459178 * 2.0;
+            flux_expected[4] = 0.5 * num_ptcls + 0.879049070406094 * 2.0 + 0.552268050859363 * 0.5;
 
             printf("The fluxes after 2nd move \nelem_id[found, expected] \n%d[%f,%f] \n%d[%f,%f] \n%d[%f,%f] \n%d[%f,%f] \n%d[%f,%f] \n%d[%f,%f]\n",
                    0, flux_host[0], flux_expected[0], 1, flux_host[1], flux_expected[1],
