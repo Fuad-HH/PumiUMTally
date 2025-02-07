@@ -327,11 +327,12 @@ namespace pumiinopenmc {
                                   Omega_h::Write<Omega_h::LO> &elem_ids,
                                   Omega_h::Write<Omega_h::LO> &ptcl_done,
                                   Omega_h::Write<Omega_h::LO> &lastExit,
-                                  Omega_h::Write<Omega_h::LO> &xFace) {
+                                  Omega_h::Write<Omega_h::LO> &xFace,
+                                  Omega_h::Write<Omega_h::Real> &inter_points) {
 
         // TODO: make this a member variable of the struct
         const auto &side_is_exposed = Omega_h::mark_exposed_sides(&mesh);
-
+        auto particle_destination = ptcls->get<1>();
         auto checkExposedEdges =
                 PS_LAMBDA(const int e, const int pid, const int mask) {
                     if (mask > 0 && !ptcl_done[pid]) {
@@ -340,6 +341,9 @@ namespace pumiinopenmc {
                         const bool exposed = side_is_exposed[bridge];
                         ptcl_done[pid] = exposed;
                         xFace[pid] = lastExit[pid];
+                        particle_destination(pid, 0) = (exposed) ? inter_points[pid*3] : particle_destination(pid, 0);
+                        particle_destination(pid, 1) = (exposed) ? inter_points[pid*3+1] : particle_destination(pid, 1);
+                        particle_destination(pid, 2) = (exposed) ? inter_points[pid*3+2] : particle_destination(pid, 2);
                         //elem_ids[pid] = exposed ? -1 : elem_ids[pid];
                     }
                 };
@@ -367,7 +371,7 @@ namespace pumiinopenmc {
             evaluateFlux(ptcls, inter_points, elem_ids, ptcl_done);
             updatePrevXPoint(inter_points);
         }
-        apply_boundary_condition(mesh, ptcls, elem_ids, ptcl_done, lastExit, inter_faces);
+        apply_boundary_condition(mesh, ptcls, elem_ids, ptcl_done, lastExit, inter_faces, inter_points);
         pp_move_to_new_element(mesh, ptcls, elem_ids, ptcl_done, lastExit);
     }
 

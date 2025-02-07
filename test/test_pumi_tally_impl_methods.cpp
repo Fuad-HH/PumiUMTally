@@ -222,7 +222,7 @@ TEST_CASE("Test Impl Class Functions") {
                        new_origin(pid, 1), new_origin(pid, 2),
                        particle_flyign(pid), particle_weights(pid));
                 // fixme The new position should be 1.0 rather than 1.1 since it goes out
-                OMEGA_H_CHECK_PRINTF(is_close_d(new_origin(pid, 0), 1.1),
+                OMEGA_H_CHECK_PRINTF(is_close_d(new_origin(pid, 0), 1.0),
                                      "Particle destination not copied properly %.16f\n", new_origin(pid, 0));
                 OMEGA_H_CHECK_PRINTF(is_close_d(new_origin(pid, 1), 0.4),
                                      "Particle destination not copied properly %.16f\n", new_origin(pid, 1));
