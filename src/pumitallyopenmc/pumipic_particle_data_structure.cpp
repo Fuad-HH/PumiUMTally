@@ -336,15 +336,21 @@ namespace pumiinopenmc {
         auto checkExposedEdges =
                 PS_LAMBDA(const int e, const int pid, const int mask) {
                     if (mask > 0 && !ptcl_done[pid]) {
-                        assert(lastExit[pid] != -1);
-                        const Omega_h::LO bridge = lastExit[pid];
-                        const bool exposed = side_is_exposed[bridge];
-                        ptcl_done[pid] = exposed;
-                        xFace[pid] = lastExit[pid];
-                        particle_destination(pid, 0) = (exposed) ? inter_points[pid*3] : particle_destination(pid, 0);
-                        particle_destination(pid, 1) = (exposed) ? inter_points[pid*3+1] : particle_destination(pid, 1);
-                        particle_destination(pid, 2) = (exposed) ? inter_points[pid*3+2] : particle_destination(pid, 2);
-                        //elem_ids[pid] = exposed ? -1 : elem_ids[pid];
+                        //assert(lastExit[pid] != -1);
+                        ptcl_done[pid] =  lastExit[pid] == -1;
+                        if (lastExit[pid] != -1) {
+                            const Omega_h::LO bridge = lastExit[pid];
+                            const bool exposed = side_is_exposed[bridge];
+                            ptcl_done[pid] = exposed;
+                            xFace[pid] = lastExit[pid];
+                            particle_destination(pid, 0) = (exposed) ? inter_points[pid * 3] : particle_destination(pid,
+                                                                                                                    0);
+                            particle_destination(pid, 1) = (exposed) ? inter_points[pid * 3 + 1] : particle_destination(
+                                    pid, 1);
+                            particle_destination(pid, 2) = (exposed) ? inter_points[pid * 3 + 2] : particle_destination(
+                                    pid, 2);
+                            //elem_ids[pid] = exposed ? -1 : elem_ids[pid];
+                        }
                     }
                 };
         pumipic::parallel_for(ptcls, checkExposedEdges, "apply vacumm boundary condition");
@@ -424,7 +430,7 @@ namespace pumiinopenmc {
                         const int &e,
                         const int &pid,
                         const int &mask) {
-                    if (mask > 0 && in_flight(pid) == 1 && !ptcl_done[pid]) {
+                    if ((mask > 0) && (in_flight(pid) == 1) && !ptcl_done[pid]) {
                         OMEGA_H_CHECK_PRINTF(total_tracklength_l[pid] >= 0.0,
                                              "ERROR: Particle is moving but the tracklength is negative: %.16f\n",
                                              total_tracklength_l[pid]);
