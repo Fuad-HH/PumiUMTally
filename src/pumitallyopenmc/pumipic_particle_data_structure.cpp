@@ -11,6 +11,7 @@
 #include <pumipic_adjacency.tpp>
 #include <Omega_h_mesh.hpp>
 #include <pumipic_mesh.hpp>
+#include <ParticleTracer.tpp>
 
 #include <chrono>
 
@@ -56,8 +57,10 @@ namespace pumiinopenmc {
         PumiParticleAtElemBoundary(size_t nelems, size_t capacity);
 
         void operator()(Omega_h::Mesh &mesh, pumiinopenmc::PPPS *ptcls, Omega_h::Write<Omega_h::LO> &elem_ids,
+                        Omega_h::Write<Omega_h::LO> &next_elems,
                         Omega_h::Write<Omega_h::LO> &inter_faces, Omega_h::Write<Omega_h::LO> &lastExit,
-                        Omega_h::Write<Omega_h::Real> &inter_points, Omega_h::Write<Omega_h::LO> &ptcl_done);
+                        Omega_h::Write<Omega_h::Real> &inter_points, Omega_h::Write<Omega_h::LO> &ptcl_done,
+                        typeof(ptcls->get<0>()) origin_segment, typeof(ptcls->get<1>()) dest_segment);
 
         void updatePrevXPoint(Omega_h::Write<Omega_h::Real> &xpoints);
 
@@ -101,9 +104,11 @@ namespace pumiinopenmc {
 
         std::unique_ptr<PumiParticleAtElemBoundary> p_pumi_particle_at_elem_boundary_handler;
 
-        Omega_h::Write<Omega_h::LO> elem_ids_;
+        Omega_h::LOs elem_ids_;
         Omega_h::Write<Omega_h::Real> inter_points_;
         Omega_h::Write<Omega_h::LO> inter_faces_;
+
+        std::unique_ptr<ParticleTracer<PPParticle, pumiinopenmc::PumiParticleAtElemBoundary>> p_particle_tracer_;
 
         Omega_h::Write<Omega_h::Real> device_pos_buffer_;
         Omega_h::Write<Omega_h::I8> device_in_adv_que_;
@@ -149,8 +154,6 @@ namespace pumiinopenmc {
         pumi_ps_size = num_particles;
         oh_mesh_fname = mesh_filename;
 
-        elem_ids_ = Omega_h::Write<Omega_h::LO>(pumi_ps_size, 0, "element_ids");
-
         device_pos_buffer_ = Omega_h::Write<Omega_h::Real>(pumi_ps_size * 3, 0.0, "device_pos_buffer");
         device_in_adv_que_ = Omega_h::Write<Omega_h::I8>(pumi_ps_size, 0, "device_in_adv_que");
         weights_           = Omega_h::Write<Omega_h::Real>(pumi_ps_size, 0.0, "weights");
@@ -159,6 +162,9 @@ namespace pumiinopenmc {
 
         load_pumipic_mesh_and_init_particles(argc, argv);
         start_pumi_particles_in_0th_element(*p_picparts_->mesh(), pumipic_ptcls.get());
+
+        p_particle_tracer_ = std::make_unique<ParticleTracer<PPParticle, pumiinopenmc::PumiParticleAtElemBoundary>>(*p_picparts_, pumipic_ptcls.get(), *p_pumi_particle_at_elem_boundary_handler, 1e-8);
+        elem_ids_ = p_particle_tracer_->getElementIds();
     }
 
     void PumiTallyImpl::initialize_particle_location(double *init_particle_positions, int64_t size) {
@@ -369,10 +375,13 @@ namespace pumiinopenmc {
 
     void PumiParticleAtElemBoundary::operator()(Omega_h::Mesh &mesh, pumiinopenmc::PPPS *ptcls,
                                                 Omega_h::Write<Omega_h::LO> &elem_ids,
+                                                Omega_h::Write<Omega_h::LO> &next_elems,
                                                 Omega_h::Write<Omega_h::LO> &inter_faces,
                                                 Omega_h::Write<Omega_h::LO> &lastExit,
                                                 Omega_h::Write<Omega_h::Real> &inter_points,
-                                                Omega_h::Write<Omega_h::LO> &ptcl_done) {
+                                                Omega_h::Write<Omega_h::LO> &ptcl_done,
+                                                typeof(ptcls->get<0>()) origin_segment,
+                                                typeof(ptcls->get<1>()) dest_segment) {
         if (!initial_) {
             evaluateFlux(ptcls, inter_points, elem_ids, ptcl_done);
             updatePrevXPoint(inter_points);
@@ -562,14 +571,11 @@ namespace pumiinopenmc {
         auto inter_faces_l = inter_faces_;
         auto inter_points_l = inter_points_;
 
-        bool isFoundAll = pumipic::particle_search(*p_picparts_->mesh(), pumipic_ptcls.get(),
-                                                   orig, dest, pid, elem_ids_l, inter_faces_l,
-                                                   inter_points_l, maxLoops, *p_pumi_particle_at_elem_boundary_handler);
+        bool isFoundAll = p_particle_tracer_->search(migrate);
+
         if (!isFoundAll) {
             printf("ERROR: Not all particles are found. May need more loops in search\n");
         }
-
-        pumiRebuild(p_picparts_.get(), pumipic_ptcls.get(), elem_ids_l, migrate);
     }
 
 
