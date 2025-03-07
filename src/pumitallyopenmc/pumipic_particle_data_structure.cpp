@@ -40,6 +40,7 @@ namespace pumiinopenmc {
 
     // ------------------------------------------------------------------------------------------------//
     // * Helper Functions
+    [[deprecated("Use move_to_next_element which is appropriate for new search class in pumipic. [!Note] It my show this even though it is not used due to template instantiation.")]]
     void pp_move_to_new_element(Omega_h::Mesh &mesh, PPPS *ptcls, Omega_h::Write<Omega_h::LO> &elem_ids,
                                 Omega_h::Write<Omega_h::LO> &ptcl_done,
                                 Omega_h::Write<Omega_h::LO> &lastExit);
@@ -103,11 +104,6 @@ namespace pumiinopenmc {
         double total_initial_weight_ = 0.0;
 
         std::unique_ptr<PumiParticleAtElemBoundary> p_pumi_particle_at_elem_boundary_handler;
-
-        Omega_h::LOs elem_ids_;
-        Omega_h::Write<Omega_h::Real> inter_points_;
-        Omega_h::Write<Omega_h::LO> inter_faces_;
-
         std::unique_ptr<ParticleTracer<PPParticle, pumiinopenmc::PumiParticleAtElemBoundary>> p_particle_tracer_;
 
         Omega_h::Write<Omega_h::Real> device_pos_buffer_;
@@ -164,7 +160,6 @@ namespace pumiinopenmc {
         start_pumi_particles_in_0th_element(*p_picparts_->mesh(), pumipic_ptcls.get());
 
         p_particle_tracer_ = std::make_unique<ParticleTracer<PPParticle, pumiinopenmc::PumiParticleAtElemBoundary>>(*p_picparts_, pumipic_ptcls.get(), *p_pumi_particle_at_elem_boundary_handler, 1e-8);
-        elem_ids_ = p_particle_tracer_->getElementIds();
     }
 
     void PumiTallyImpl::initialize_particle_location(double *init_particle_positions, int64_t size) {
@@ -300,6 +295,7 @@ namespace pumiinopenmc {
         oh_lib = pp_lib->omega_h_lib();
     }
 
+    [[deprecated("Use move_to_next_element which is appropriate for new search class in pumipic. [!Note] It my show this even though it is not used due to template instantiation.")]]
     void pp_move_to_new_element(Omega_h::Mesh &mesh, PPPS *ptcls, Omega_h::Write<Omega_h::LO> &elem_ids,
                                 Omega_h::Write<Omega_h::LO> &ptcl_done,
                                 Omega_h::Write<Omega_h::LO> &lastExit) {
@@ -329,33 +325,40 @@ namespace pumiinopenmc {
         parallel_for(ptcls, set_next_element, "pumipic_set_next_element");
     }
 
+    void move_to_next_element(PPPS *ptcls, Omega_h::Write<Omega_h::LO> &elem_ids, Omega_h::Write<Omega_h::LO> &next_elems) {
+        auto in_flight = ptcls->get<3>();
+        auto move_to_next = PS_LAMBDA(const int e, const int pid, const int mask) {
+            // move only if particle in flight and not leaving the domain
+            if (mask > 0 && in_flight(pid) && next_elems[pid] != -1) {
+                elem_ids[pid] = next_elems[pid];
+            }
+        };
+        pumipic::parallel_for(ptcls, move_to_next, "move to next element");
+    }
+
     void apply_boundary_condition(Omega_h::Mesh &mesh, PPPS *ptcls,
                                   Omega_h::Write<Omega_h::LO> &elem_ids,
+                                  Omega_h::Write<Omega_h::LO> &next_elems,
                                   Omega_h::Write<Omega_h::LO> &ptcl_done,
                                   Omega_h::Write<Omega_h::LO> &lastExit,
                                   Omega_h::Write<Omega_h::LO> &xFace,
                                   Omega_h::Write<Omega_h::Real> &inter_points) {
 
         // TODO: make this a member variable of the struct
-        const auto &side_is_exposed = Omega_h::mark_exposed_sides(&mesh);
         auto particle_destination = ptcls->get<1>();
         auto checkExposedEdges =
                 PS_LAMBDA(const int e, const int pid, const int mask) {
                     if (mask > 0 && !ptcl_done[pid]) {
-                        //assert(lastExit[pid] != -1);
-                        ptcl_done[pid] =  lastExit[pid] == -1;
-                        if (lastExit[pid] != -1) {
-                            const Omega_h::LO bridge = lastExit[pid];
-                            const bool exposed = side_is_exposed[bridge];
-                            ptcl_done[pid] = exposed;
+                        bool reached_destination = (lastExit[pid] == -1);
+                        bool hit_boundary = ((next_elems[pid] == -1) && (elem_ids[pid] != -1));
+                        ptcl_done[pid] = (reached_destination || hit_boundary) ? 1 : ptcl_done[pid];
+
+                        if (hit_boundary) { // just reached the boundary
                             xFace[pid] = lastExit[pid];
-                            particle_destination(pid, 0) = (exposed) ? inter_points[pid * 3] : particle_destination(pid,
-                                                                                                                    0);
-                            particle_destination(pid, 1) = (exposed) ? inter_points[pid * 3 + 1] : particle_destination(
-                                    pid, 1);
-                            particle_destination(pid, 2) = (exposed) ? inter_points[pid * 3 + 2] : particle_destination(
-                                    pid, 2);
-                            //elem_ids[pid] = exposed ? -1 : elem_ids[pid];
+                            // particle reaches the boundary
+                            particle_destination(pid, 0) = inter_points[pid * 3];
+                            particle_destination(pid, 1) = inter_points[pid * 3 + 1];
+                            particle_destination(pid, 2) = inter_points[pid * 3 + 2];
                         }
                     }
                 };
@@ -386,8 +389,8 @@ namespace pumiinopenmc {
             evaluateFlux(ptcls, inter_points, elem_ids, ptcl_done);
             updatePrevXPoint(inter_points);
         }
-        apply_boundary_condition(mesh, ptcls, elem_ids, ptcl_done, lastExit, inter_faces, inter_points);
-        pp_move_to_new_element(mesh, ptcls, elem_ids, ptcl_done, lastExit);
+        apply_boundary_condition(mesh, ptcls, elem_ids, next_elems, ptcl_done, lastExit, inter_faces, inter_points);
+        move_to_next_element(ptcls, elem_ids, next_elems);
     }
 
     void PumiParticleAtElemBoundary::mark_initial_as(bool initial) {
@@ -517,15 +520,6 @@ namespace pumiinopenmc {
         ps::parallel_for(ptcls, updatePtclPos);
     }
 
-    void pumiRebuild(pumipic::Mesh *picparts, PPPS *ptcls, Omega_h::Write<Omega_h::LO> &elem_ids,
-                     const bool migrate = true) {
-        pumiUpdatePtclPositions(ptcls);
-        if (migrate) {
-            pumipic::migrate_lb_ptcls(*picparts, ptcls, elem_ids, 1.05);
-            pumipic::printPtclImb(ptcls);
-        }
-    }
-
     void PumiParticleAtElemBoundary::compute_total_tracklength(PPPS *ptcls) {
         auto orig = ptcls->get<0>();
         auto dest = ptcls->get<1>();
@@ -552,7 +546,6 @@ namespace pumiinopenmc {
         assert((is_pumipic_initialized == false && initial == true) ||
                (is_pumipic_initialized == true && initial == false));
         p_pumi_particle_at_elem_boundary_handler->mark_initial_as(initial);
-        Omega_h::LO maxLoops = 1000;
         auto orig = pumipic_ptcls->get<0>();
         auto dest = pumipic_ptcls->get<1>();
         auto pid = pumipic_ptcls->get<2>();
@@ -566,10 +559,6 @@ namespace pumiinopenmc {
             p_pumi_particle_at_elem_boundary_handler->updatePrevXPoint(pumipic_ptcls.get());
             p_pumi_particle_at_elem_boundary_handler->compute_total_tracklength(pumipic_ptcls.get());
         }
-
-        auto elem_ids_l = elem_ids_;
-        auto inter_faces_l = inter_faces_;
-        auto inter_points_l = inter_points_;
 
         bool isFoundAll = p_particle_tracer_->search(migrate);
 

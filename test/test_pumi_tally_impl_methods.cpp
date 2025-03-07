@@ -52,16 +52,6 @@ TEST_CASE("Test Impl Class Functions") {
             argc, argv);
     fprintf(stdout, "[INFO] Particle structure created successfully\n");
 
-    {// * Check element IDs
-        auto elem_ids_l = p_pumi_tallyimpl->elem_ids_;
-        REQUIRE(elem_ids_l.size() == p_pumi_tallyimpl->pumipic_ptcls->nPtcls());
-        REQUIRE(elem_ids_l.size() <= p_pumi_tallyimpl->pumipic_ptcls->capacity());
-        Omega_h::HostRead<Omega_h::LO> elem_ids_host(elem_ids_l);
-        for (int i = 0; i < elem_ids_host.size(); ++i) {
-            REQUIRE(elem_ids_host[i] == 0);
-        }
-    }
-
     {// * Check other array sizes
         auto device_pos_l = p_pumi_tallyimpl->device_pos_buffer_;
         auto device_adv_l = p_pumi_tallyimpl->device_in_adv_que_;
@@ -143,7 +133,7 @@ TEST_CASE("Test Impl Class Functions") {
     }
 
     {// * Check if all particles reached element 2
-        auto elem_ids_host = Omega_h::HostRead<Omega_h::LO>(p_pumi_tallyimpl->elem_ids_);
+        auto elem_ids_host = Omega_h::HostRead<Omega_h::LO>(p_pumi_tallyimpl->p_particle_tracer_->getElementIds());
         REQUIRE(elem_ids_host.size() == p_pumi_tallyimpl->pumipic_ptcls->capacity());
         for (int pid = 0; pid < num_ptcls; ++pid) {
             REQUIRE(elem_ids_host[pid] == 2);
@@ -207,7 +197,7 @@ TEST_CASE("Test Impl Class Functions") {
     }
 
     {// * Check if the particles correctly reaches element 4
-        auto elem_ids_local = p_pumi_tallyimpl->elem_ids_;
+        auto elem_ids_local = p_pumi_tallyimpl->p_particle_tracer_->getElementIds();
         Omega_h::HostRead<Omega_h::LO> elem_ids_local_host(elem_ids_local);
         for (int pid = 0; pid < num_ptcls; ++pid) {
             printf("[INFO] Particles reached elem %d\n", elem_ids_local_host[pid]);
@@ -317,7 +307,7 @@ TEST_CASE("Test Impl Class Functions") {
         }
 
         {// check destination element
-            auto elem_id_local = p_pumi_tallyimpl->elem_ids_;
+            auto elem_id_local = p_pumi_tallyimpl->p_particle_tracer_->getElementIds();
             Omega_h::HostRead<Omega_h::LO> elem_id_host(elem_id_local);
             printf("After the 2nd move, the current ids are: %d, %d, %d, %d, %d\n",
                    elem_id_host[0], elem_id_host[1], elem_id_host[2], elem_id_host[3],
@@ -394,9 +384,10 @@ TEST_CASE("Test Boundary Handler Struct and Operator") {
 
     {
         {// *Check if elem_ids_ are 2 now
-            auto elem_ids_l = p_pumi_tallyimpl->elem_ids_;
+            auto elem_ids_l = p_pumi_tallyimpl->p_particle_tracer_->getElementIds();
             Omega_h::HostRead<Omega_h::LO> elem_id_h(elem_ids_l);
             for (int pid = 0; pid < num_ptcls; ++pid) {
+                printf("Element id of particle %d: %d expected %d\n", pid, elem_id_h[pid], 2);
                 REQUIRE(elem_id_h[pid] == 2);
             }
         }
@@ -418,9 +409,9 @@ TEST_CASE("Test Boundary Handler Struct and Operator") {
         Omega_h::Write<Omega_h::LO> ptcl_done(num_ptcls, 0, "particle done flag");
 
         {// * check how inter_points look like
-            auto inter_points_l = p_pumi_tallyimpl->inter_points_;
-            Omega_h::HostWrite<Omega_h::Real> inter_points_host(inter_points_l);
-            REQUIRE(inter_points_host.size() == 0); // uninitialized
+            auto inter_points_l = p_pumi_tallyimpl->p_particle_tracer_->getIntersectionPoints();
+            Omega_h::HostRead<Omega_h::Real> inter_points_host(inter_points_l);
+            REQUIRE(inter_points_host.size() == p_pumi_tallyimpl->pumipic_ptcls->capacity()*3); // uninitialized
         }
     }
 
