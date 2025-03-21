@@ -8,6 +8,7 @@ option(BUILD_SHARED_LIBS                    "Build shared libraries"        ON)
 option(PUMITALLYOPENMC_ENABLE_TESTS         "Enable tests"                  ON)
 option(PUMI_USE_KOKKOS_CUDA                 "Use CUDA"                      OFF)
 option(PUMI_MEASURE_TIME                    "Measure time"                  OFF)
+option(PUMI_ENABLE_PHYSICS                  "Enable physics"                ON)
 ###################################################################
 
 ############################ CLANG ################################
@@ -32,6 +33,15 @@ set(PUMITALLYOPENMC_HEADERS
 set(PUMITALLYOPENMC_SOURCES
         src/pumitallyopenmc/pumipic_particle_data_structure.cpp
 )
+
+if(PUMI_ENABLE_PHYSICS)
+    set(PUMI_PHYSICS_HEADERS
+        src/physics/MultiGroupXS.h
+    )
+    set(PUMI_PHYSICS_SOURCES
+        src/physics/MultiGroupXS.cpp
+    )
+endif()
 
 
 ################################## Testing ########################
@@ -76,6 +86,18 @@ if(PUMI_MEASURE_TIME)
 
     target_compile_definitions(pumitallyopenmc PRIVATE -DPUMI_MEASURE_TIME)
 endif()
+
+if(PUMI_ENABLE_PHYSICS)
+    find_package(HDF5 REQUIRED COMPONENTS CXX)
+    # if not found, print a message and return
+    if(NOT HDF5_FOUND)
+        message(FATAL_ERROR "!!HDF5 not found")
+    endif()
+    add_library(pumitallyphysics)
+    target_sources(pumitallyphysics PRIVATE ${PUMI_PHYSICS_SOURCES})
+    target_link_libraries(pumitallyphysics PRIVATE Omega_h::omega_h hdf5::hdf5_cpp)
+    target_include_directories(pumitallyphysics PRIVATE ${HDF5_INCLUDE_DIRS})
+endif ()
 ###################################################################
 
 
