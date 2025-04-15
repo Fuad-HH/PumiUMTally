@@ -28,4 +28,11 @@ add_executable(test_pumi_tally_impl_methods test_pumi_tally_impl_methods.cpp)
 target_include_directories(test_pumi_tally_impl_methods PRIVATE ${PROJECT_SOURCE_DIR}/src/pumitallyopenmc)
 target_link_libraries(test_pumi_tally_impl_methods PUBLIC Catch2::Catch2WithMain pumipic::pumipic)
 catch_discover_tests(test_pumi_tally_impl_methods)
+
+
+add_executable(mgxs_tally_reader_test mgxs_tally_reader_test.cpp)
+target_include_directories(mgxs_tally_reader_test PRIVATE ${PROJECT_SOURCE_DIR}/src/physics)
+target_link_libraries(mgxs_tally_reader_test PUBLIC Catch2::Catch2WithMain pumitallyphysics)
+catch_discover_tests(mgxs_tally_reader_test
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/test/)
 #################### Test HostWrite ####################

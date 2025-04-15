@@ -6,39 +6,59 @@
 #define PUMITALLYOPENMC_MULTIGROUPXS_H
 
 #include<Omega_h_array.hpp>
-#include<array>
 #include<map>
+#include <Omega_h_vector.hpp>
 
-struct TemperatureXSData;
-
-class Material {
+class CrossSection_T{
 public:
+    CrossSection_T(Omega_h::Real temp, Omega_h::Write<Omega_h::Real> abs,
+                   Omega_h::Write<Omega_h::Real> total, Omega_h::Write<Omega_h::LO> g_max,
+                   Omega_h::Write<Omega_h::LO> g_min, Omega_h::Write<Omega_h::Real> scatter_matrix)
+        : temperature(temp), absorption(abs), total(total), g_max(g_max), g_min(g_min),
+          scatter_matrix(scatter_matrix) {}
+    Omega_h::Real temperature;
+    Omega_h::Write<Omega_h::Real> absorption;
+    Omega_h::Write<Omega_h::Real> total;
 
-private:
-    std::vector<TemperatureXSData> temperatureXSData_;
+    Omega_h::Write<Omega_h::LO> g_max;
+    Omega_h::Write<Omega_h::LO> g_min;
+    Omega_h::Write<Omega_h::Real> scatter_matrix;
 };
+
+class MaterialXS{
+public:
+    MaterialXS(std::string name, bool fissionable, int order, std::string representation,
+               std::string scatterFormat, std::string scatterShape, std::vector<std::string> temperatures,
+               std::vector<double> KTs, std::vector<CrossSection_T> crossSections)
+        : materialName(name), isFissionable(fissionable), order(order),
+          representation(representation), scatterFormat(scatterFormat),
+          scatterShape(scatterShape), temperatures(temperatures), kTs(KTs),
+            crossSections(crossSections) {}
+    std::string materialName;
+    bool isFissionable;
+    int order;
+    std::string representation;
+    std::string scatterFormat;
+    std::string scatterShape;
+
+    std::vector<std::string> temperatures;
+    std::vector<double> kTs;
+    std::vector<CrossSection_T> crossSections;
+};
+
 
 class MultiGroupXS {
 public:
-    int nGroups() const { return n_groups_; }
-    bool validGroup(int group) const { return group >= 0 && group < n_groups_; }
-
-    [[nodiscard]]
-    std::array<double,2> getGroupBoundaries(int group) const {
-        // check if group is valid
-        if (!validGroup(group)) {
-            std::string message = "Invalid group number " + std::to_string(group) + ". Must be between 0 and " + std::to_string(n_groups_);
-            throw std::runtime_error(message);
-        }
-        return {groupBoundaries_[group], groupBoundaries_[group]};
-    }
+    std::string sourceFileName;
+    int nEnergyGroups;
 
 
-private:
-    int n_groups_;
-    Omega_h::Write<Omega_h::Real> groupBoundaries_;
-
-    std::vector<Material> materials_;
+    Omega_h::Write<Omega_h::Real> energyGroupEdges;
+    std::vector<std::string> materialNames;
+    std::vector<MaterialXS> materialXSs;
 };
+
+
+MultiGroupXS read_mgxs(std::string& filename);
 
 #endif //PUMITALLYOPENMC_MULTIGROUPXS_H

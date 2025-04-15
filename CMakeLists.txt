@@ -40,6 +40,7 @@ if(PUMI_ENABLE_PHYSICS)
     )
     set(PUMI_PHYSICS_SOURCES
         src/physics/MultiGroupXS.cpp
+        src/physics/readMGXSFile.cpp
     )
 endif()
 
@@ -94,9 +95,9 @@ if(PUMI_ENABLE_PHYSICS)
         message(FATAL_ERROR "!!HDF5 not found")
     endif()
     add_library(pumitallyphysics)
-    target_sources(pumitallyphysics PRIVATE ${PUMI_PHYSICS_SOURCES})
-    target_link_libraries(pumitallyphysics PRIVATE Omega_h::omega_h hdf5::hdf5_cpp)
-    target_include_directories(pumitallyphysics PRIVATE ${HDF5_INCLUDE_DIRS})
+    target_sources(pumitallyphysics PUBLIC ${PUMI_PHYSICS_SOURCES})
+    target_link_libraries(pumitallyphysics PUBLIC Omega_h::omega_h HDF5::HDF5)
+    target_include_directories(pumitallyphysics PUBLIC ${HDF5_INCLUDE_DIRS})
 endif ()
 ###################################################################
 
