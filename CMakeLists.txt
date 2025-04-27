@@ -37,10 +37,12 @@ set(PUMITALLYOPENMC_SOURCES
 if(PUMI_ENABLE_PHYSICS)
     set(PUMI_PHYSICS_HEADERS
         src/physics/MultiGroupXS.h
+        src/physics/PumiTransport.h
     )
     set(PUMI_PHYSICS_SOURCES
         src/physics/MultiGroupXS.cpp
         src/physics/readMGXSFile.cpp
+        src/physics/PumiTransport.cpp
     )
 endif()
 

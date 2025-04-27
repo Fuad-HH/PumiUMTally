@@ -16,6 +16,9 @@ public:
                    Omega_h::Write<Omega_h::LO> g_min, Omega_h::Write<Omega_h::Real> scatter_matrix)
         : temperature(temp), absorption(abs), total(total), g_max(g_max), g_min(g_min),
           scatter_matrix(scatter_matrix) {}
+
+
+
     Omega_h::Real temperature;
     Omega_h::Write<Omega_h::Real> absorption;
     Omega_h::Write<Omega_h::Real> total;
@@ -34,6 +37,8 @@ public:
           representation(representation), scatterFormat(scatterFormat),
           scatterShape(scatterShape), temperatures(temperatures), kTs(KTs),
             crossSections(crossSections) {}
+
+
     std::string materialName;
     bool isFissionable;
     int order;
