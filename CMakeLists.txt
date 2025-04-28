@@ -41,8 +41,7 @@ if(PUMI_ENABLE_PHYSICS)
     )
     set(PUMI_PHYSICS_SOURCES
         src/physics/MultiGroupXS.cpp
-        src/physics/readMGXSFile.cpp
-        src/physics/PumiTransport.cpp
+            src/physics/PumiTransport.cpp
     )
 endif()
 

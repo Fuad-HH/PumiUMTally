@@ -5,65 +5,50 @@
 #ifndef PUMITALLYOPENMC_MULTIGROUPXS_H
 #define PUMITALLYOPENMC_MULTIGROUPXS_H
 
-#include<Omega_h_array.hpp>
-#include<map>
+#include <Omega_h_array.hpp>
 #include <Omega_h_vector.hpp>
-
-class CrossSection_T{
-public:
-    CrossSection_T(Omega_h::Real temp, Omega_h::Write<Omega_h::Real> abs,
-                   Omega_h::Write<Omega_h::Real> total, Omega_h::Write<Omega_h::LO> g_max,
-                   Omega_h::Write<Omega_h::LO> g_min, Omega_h::Write<Omega_h::Real> scatter_matrix)
-        : temperature(temp), absorption(abs), total(total), g_max(g_max), g_min(g_min),
-          scatter_matrix(scatter_matrix) {}
-
-
-
-    Omega_h::Real temperature;
-    Omega_h::Write<Omega_h::Real> absorption;
-    Omega_h::Write<Omega_h::Real> total;
-
-    Omega_h::Write<Omega_h::LO> g_max;
-    Omega_h::Write<Omega_h::LO> g_min;
-    Omega_h::Write<Omega_h::Real> scatter_matrix;
-};
-
-class MaterialXS{
-public:
-    MaterialXS(std::string name, bool fissionable, int order, std::string representation,
-               std::string scatterFormat, std::string scatterShape, std::vector<std::string> temperatures,
-               std::vector<double> KTs, std::vector<CrossSection_T> crossSections)
-        : materialName(name), isFissionable(fissionable), order(order),
-          representation(representation), scatterFormat(scatterFormat),
-          scatterShape(scatterShape), temperatures(temperatures), kTs(KTs),
-            crossSections(crossSections) {}
-
-
-    std::string materialName;
-    bool isFissionable;
-    int order;
-    std::string representation;
-    std::string scatterFormat;
-    std::string scatterShape;
-
-    std::vector<std::string> temperatures;
-    std::vector<double> kTs;
-    std::vector<CrossSection_T> crossSections;
-};
-
+#include <H5Cpp.h>
 
 class MultiGroupXS {
 public:
-    std::string sourceFileName;
-    int nEnergyGroups;
+    explicit MultiGroupXS(std::string filename);
+
+    void print();
+    std::string getSourceFileName() { return sourceFileName_; }
+    int getNumEnergyGroups() const { return nEnergyGroups_; }
+    int getNumMaterials() const { return nMaterials_; }
+    int getNumTemps() const { return nTemps_; }
+    int getOrder() const { return order_; }
+
+    [[nodiscard]] std::vector<std::string> getMaterialNames() { return materialNames_; }
+    [[nodiscard]] std::vector<std::string> getTemperatureNames() { return temperatureNames_; }
+    [[nodiscard]] Omega_h::Read<Omega_h::Real> getEnergyGroupEdges() { return energyGroupEdges_; }
+
+    [[nodiscard]] Kokkos::View<Omega_h::Real***> getSigmaT() { return sigma_t_; }
+    [[nodiscard]] Kokkos::View<Omega_h::Real***> getSigmaA() { return sigma_a_; }
+    [[nodiscard]] Kokkos::View<Omega_h::Real****> getSigmaS() { return sigma_s_; }
+
+private:
+    std::string sourceFileName_;
+    int nEnergyGroups_;
+    int nMaterials_;
+    int nTemps_;
+    int order_;
 
 
-    Omega_h::Write<Omega_h::Real> energyGroupEdges;
-    std::vector<std::string> materialNames;
-    std::vector<MaterialXS> materialXSs;
+    std::vector<std::string> materialNames_;
+    std::vector<std::string> temperatureNames_;
+
+    Omega_h::Write<Omega_h::Real> energyGroupEdges_;
+    //Omega_h::Write<Omega_h::Real> temperatures_;
+
+    Kokkos::View<Omega_h::Real**> kTs_; // mat, T
+    Kokkos::View<Omega_h::Real***> sigma_t_; // mat, T, g
+    Kokkos::View<Omega_h::Real***> sigma_a_; // mat, T, g
+    Kokkos::View<Omega_h::Real****> sigma_s_; // mat, T, g, g
+
+
+    void fillXS(const H5::H5File &file);
 };
-
-
-MultiGroupXS read_mgxs(std::string& filename);
 
 #endif //PUMITALLYOPENMC_MULTIGROUPXS_H
