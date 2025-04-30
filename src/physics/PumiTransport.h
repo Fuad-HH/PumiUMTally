@@ -67,7 +67,7 @@ public:
                 random_pool_t rpool = random_pool_t(SEED));
   void initializeSource();
   void writePositionsForGNUPlot(std::string gnuplotFileName);
-  void nextCollision();
+  void nextCollision(random_pool_t rpool);
   size_t getNumParticles() const { return nParticles_; }
 
   random_pool_t randomPool;
@@ -76,7 +76,8 @@ public:
   Kokkos::View<int *[3]> matTempEg; // TODO: for multi-material simulations, it
                                     // will needed. Now, it's 0,0
   Kokkos::View<double *> particleEnergy;
-  Kokkos::View<int *> particleEnergyGroup;
+  Kokkos::View<int *>
+      particleEnergyGroup; // remove this duplicate, already in matTempEg
   Kokkos::View<double *> particleWeight;
   Kokkos::View<double *> particlePosition;
   Kokkos::View<double *> particleDirection;

@@ -80,6 +80,13 @@ void PumiTransport::initializeSource() {
       });
   mgxs.findEnergyGroupIndex(particleEnergy_l, particleEnergyGroup);
 
+  auto particleEnergyGroup_l = particleEnergyGroup;
+  auto matTempEg_l = matTempEg;
+  Kokkos::parallel_for(
+      "copy group", nparticles, KOKKOS_LAMBDA(const int i) {
+        matTempEg_l(i, 2) = particleEnergyGroup_l(i);
+      });
+
   auto particle_direction_l = particleDirection;
   sampleInitialUniformDirection(particle_direction_l, randomPool);
 }
@@ -137,27 +144,109 @@ void sampleInitialUniformDirection(Kokkos::View<double *> direction,
       });
 }
 
-void PumiTransport::nextCollision() {
+KOKKOS_FUNCTION
+void rotate_direction(const double u[], double mu, double phi, double new_u[]) {
+  double cos = std::cos(phi);
+  double sin = std::sin(phi);
+  double sqrt_mu = std::sqrt(1. - mu * mu);
+  double sqrt_w = std::sqrt(1. - u[2] * u[2]);
+
+  double ux, uy, uz;
+
+  if (sqrt_w > 1.E-10) {
+    ux = mu * u[0] + sqrt_mu * (u[0] * u[2] * cos - u[1] * sin) / sqrt_w;
+    uy = mu * u[1] + sqrt_mu * (u[1] * u[2] * cos + u[0] * sin) / sqrt_w;
+    uz = mu * u[2] - sqrt_mu * sqrt_w * cos;
+  } else {
+    double sqrt_v = std::sqrt(1. - u[1] * u[1]);
+
+    ux = mu * u[0] + sqrt_mu * (u[0] * u[1] * cos + u[2] * sin) / sqrt_v;
+    uy = mu * u[1] - sqrt_mu * sqrt_v * cos;
+    uz = mu * u[2] + sqrt_mu * (u[1] * u[2] * cos - u[0] * sin) / sqrt_v;
+  }
+  new_u[0] = ux;
+  new_u[1] = uy;
+  new_u[2] = uz;
+}
+
+void PumiTransport::nextCollision(random_pool_t rpool) {
   auto weights_l = particleWeight;
   auto energies_l = particleEnergy;
   auto positions_l = particlePosition;
   auto directions_l = particleDirection;
   auto material_l = matTempEg;
+  auto mat_temp_eg_l = matTempEg;
 
   auto sigma_t_l = mgxs.getSigmaT();
   auto sigma_s_l = mgxs.getSigmaS();
   auto sigma_a_l = mgxs.getSigmaA();
-  auto scatter_l = mgxs.getScatteringMatrix();
+  auto scatter_matrix_l = mgxs.getScatteringMatrix();
+  auto group_edges = mgxs.getEnergyGroupEdges();
 
   // update weights
   Kokkos::parallel_for(
       "update weights", nParticles_, KOKKOS_LAMBDA(const int i) {
         auto matid = material_l(i, 0);
         auto temp = material_l(i, 1);
-        weights_l(i) *= .1;
-      });
+        auto eg = material_l(i, 2);
 
-  // scatter
-  // update energy
-  // update position
+        auto absorb = sigma_a_l(matid, temp, eg);
+        auto scatter = sigma_s_l(matid, temp, eg);
+        auto total = sigma_t_l(matid, temp, eg);
+
+        weights_l(i) *= (1.0 - absorb) / total;
+
+        // russian roulette
+        auto generator = rpool.get_state();
+        auto rand = generator.drand(0, 1);
+        double p_kill = 1.0 - Kokkos::abs(weights_l(i)) / 0.2; // cutoff 0.2
+        weights_l(i) = (rand > p_kill) ? 1.0 : 0.0; // survival weight 1.0
+
+        // scatter
+        auto rand2 = generator.drand(0, 1);
+        int scattered_group = -1;
+        for (int g = 0; g < scatter_matrix_l.extent(3); ++g) {
+          // scattered_group = (rand2 < scatter_matrix_l(matid, temp, eg, g)) ?
+          // g : scattered_group;
+          if (rand2 < scatter_matrix_l(matid, temp, eg, g)) {
+            scattered_group = g;
+            break; // Exit the loop once the group is found
+          }
+        }
+        if (scattered_group == -1) {
+          printf("[ERROR] No scattered group found\n");
+        }
+        mat_temp_eg_l(i, 2) = scattered_group;
+
+        // update energy: middle of the group
+        auto prev_energy = energies_l(i);
+        auto new_energy = 0.5 * (group_edges[mat_temp_eg_l(i, 2)] +
+                                 group_edges[mat_temp_eg_l(i, 2) + 1]);
+        energies_l(i) = new_energy;
+
+        // scatter direction: calculate cosine of the angle based on change of
+        // energy
+        double A = 5.0; // TODO: this has to come from the material
+        double alpha = ((A - 1) / (A + 1));
+        alpha *= alpha;
+        // double mu = ((1+alpha)*(1-alpha))/(2*(new_energy/prev_energy));
+        double mu = generator.drand(-1, 1); // TODO: resolve physics here
+        double phi = generator.drand(0, 1.0) * 2 * M_PI;
+        double new_direction[3] = {0.0, 0.0, 0.0};
+        rotate_direction(&directions_l(3 * i), mu, phi, new_direction);
+
+        directions_l(3 * i) = new_direction[0];
+        directions_l(3 * i + 1) = new_direction[1];
+        directions_l(3 * i + 2) = new_direction[2];
+
+        // get distance to next collision
+        double distance = -Kokkos::log(generator.drand(1e-100, 1)) / total;
+
+        // update next position
+        positions_l(3 * i) += distance * directions_l(3 * i);
+        positions_l(3 * i + 1) += distance * directions_l(3 * i + 1);
+        positions_l(3 * i + 2) += distance * directions_l(3 * i + 2);
+
+        rpool.free_state(generator);
+      });
 }
