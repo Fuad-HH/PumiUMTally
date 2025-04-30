@@ -26,7 +26,12 @@ public:
 
     [[nodiscard]] Kokkos::View<Omega_h::Real***> getSigmaT() { return sigma_t_; }
     [[nodiscard]] Kokkos::View<Omega_h::Real***> getSigmaA() { return sigma_a_; }
-    [[nodiscard]] Kokkos::View<Omega_h::Real****> getSigmaS() { return sigma_s_; }
+    [[nodiscard]] Kokkos::View<Omega_h::Real***> getSigmaS() { return sigma_s_; }
+    [[nodiscard]] Kokkos::View<Omega_h::Real****> getScatteringMatrix() { return scattering_matrix_; }
+
+    void rowSumScatteringMatrix();
+    void normalizeScatteringMatrix();
+
 
 private:
     std::string sourceFileName_;
@@ -45,7 +50,8 @@ private:
     Kokkos::View<Omega_h::Real**> kTs_; // mat, T
     Kokkos::View<Omega_h::Real***> sigma_t_; // mat, T, g
     Kokkos::View<Omega_h::Real***> sigma_a_; // mat, T, g
-    Kokkos::View<Omega_h::Real****> sigma_s_; // mat, T, g, g
+    Kokkos::View<Omega_h::Real****> scattering_matrix_; // mat, T, g, g
+    Kokkos::View<Omega_h::Real ***> sigma_s_; // mat, T, g
 
 
     void fillXS(const H5::H5File &file);

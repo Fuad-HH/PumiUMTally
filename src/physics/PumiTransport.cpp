@@ -10,6 +10,7 @@ PumiTransport::PumiTransport(std::string meshFile, std::string xsFile, size_t nP
                              random_pool_t rpool)
         : mgxs(xsFile), meshFileName(meshFile), nParticles_(nParticles), randomPool(rpool), source(std::move(source)){
 
+    materialTemperature = Kokkos::View<int *[2]> ("materialAndTemperature", nParticles_);
     particleEnergy = Kokkos::View<double *>("particleEnergy", nParticles_);
     particleWeight = Kokkos::View<double *>("particleWeight", nParticles_);
     particleOrigins = Kokkos::View<double *>("particleOrigins", nParticles_ * 3);

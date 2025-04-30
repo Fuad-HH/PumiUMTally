@@ -67,6 +67,7 @@ public:
     random_pool_t randomPool;
     Source source;
     std::string meshFileName;
+    Kokkos::View<int *[2]> materialTemperature; //TODO: for multi-material simulations, it will needed. Now, it's 0,0
     Kokkos::View<double *> particleEnergy;
     Kokkos::View<double *> particleWeight;
     Kokkos::View<double *> particleOrigins;

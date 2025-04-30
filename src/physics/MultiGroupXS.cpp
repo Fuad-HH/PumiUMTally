@@ -52,9 +52,12 @@ MultiGroupXS::MultiGroupXS(std::string filename): sourceFileName_(filename) {
     kTs_ = Kokkos::View<Omega_h::Real**> ("kTs", nMaterials_, nTemps_);
     sigma_t_ = Kokkos::View<Omega_h::Real***>("sigma_t", nMaterials_, nTemps_, nEnergyGroups_);
     sigma_a_ = Kokkos::View<Omega_h::Real***>("sigma_a", nMaterials_, nTemps_, nEnergyGroups_);
-    sigma_s_ = Kokkos::View<Omega_h::Real****>("sigma_s", nMaterials_, nTemps_, nEnergyGroups_, nEnergyGroups_);
+    sigma_s_ = Kokkos::View<Omega_h::Real***>("sigma_s", nMaterials_, nTemps_, nEnergyGroups_);
+    scattering_matrix_ = Kokkos::View<Omega_h::Real****>("scattering matrix", nMaterials_, nTemps_, nEnergyGroups_, nEnergyGroups_);
 
     fillXS(file);
+    rowSumScatteringMatrix();
+    normalizeScatteringMatrix();
     file.close();
 }
 
@@ -62,7 +65,7 @@ void MultiGroupXS::fillXS(const H5::H5File &file) {
     auto kTs_h = Kokkos::create_mirror_view(kTs_);
     auto sigma_t_h = Kokkos::create_mirror_view(sigma_t_);
     auto sigma_a_h = Kokkos::create_mirror_view(sigma_a_);
-    auto sigma_s_h = Kokkos::create_mirror_view(sigma_s_);
+    auto scattering_matrix_h = Kokkos::create_mirror_view(scattering_matrix_);
 
     for (int matId = 0; matId < materialNames_.size(); ++matId) {
         const auto& materialName = materialNames_[matId];
@@ -130,7 +133,7 @@ void MultiGroupXS::fillXS(const H5::H5File &file) {
 
                 // Symmetric scattering matrix
                 for (int g2 = 0; g2 < nEnergyGroups_; ++g2) {
-                    sigma_s_h(matId, tempId, g, g2) = scatteringData[g * nEnergyGroups_ + g2];
+                    scattering_matrix_h(matId, tempId, g, g2) = scatteringData[g * nEnergyGroups_ + g2];
                 }
             }
         }
@@ -140,7 +143,73 @@ void MultiGroupXS::fillXS(const H5::H5File &file) {
     Kokkos::deep_copy(kTs_, kTs_h);
     Kokkos::deep_copy(sigma_t_, sigma_t_h);
     Kokkos::deep_copy(sigma_a_, sigma_a_h);
-    Kokkos::deep_copy(sigma_s_, sigma_s_h);
+    Kokkos::deep_copy(scattering_matrix_, scattering_matrix_h);
+}
+
+void MultiGroupXS::rowSumScatteringMatrix() {
+    using team_policy = Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace>;
+    using member_type = team_policy::member_type;
+
+    auto scattering_matrix_l = scattering_matrix_;
+    auto sigma_s_l = sigma_s_;
+
+    Kokkos::parallel_for("row sum sigma_s", team_policy(nMaterials_, Kokkos::AUTO),
+    KOKKOS_LAMBDA(const member_type& team_member) {
+    int m = team_member.league_rank(); // material index
+    Kokkos::parallel_for(Kokkos::TeamThreadRange(team_member, scattering_matrix_l.extent(1) * scattering_matrix_l.extent(2)),
+                         [=](const int& i) {
+                             int t = i / scattering_matrix_l.extent(2); // temperature index
+                             int g = i % scattering_matrix_l.extent(2); // group index
+                             Omega_h::Real sum = 0.0;
+                             Kokkos::parallel_reduce(Kokkos::ThreadVectorRange(team_member, scattering_matrix_l.extent(2)),
+                             [=](int j, double& lsum) {
+                                 lsum += scattering_matrix_l(m, t, g, j);
+                             }, sum);
+                             sigma_s_l(m, t, g) = sum;
+                         });
+    });
+}
+
+void MultiGroupXS::normalizeScatteringMatrix() {
+    using team_policy = Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace>;
+    using member_type = team_policy::member_type;
+    auto scattering_matrix_l = scattering_matrix_;
+    auto sigma_s_l = sigma_s_;
+    const int nmat = scattering_matrix_l.extent(0);
+    const int ntemp = scattering_matrix_l.extent(1);
+    const int ngroup = scattering_matrix_l.extent(2);
+    team_policy policy(nmat, Kokkos::AUTO);
+
+    Kokkos::parallel_for("normalize scattering matrix", policy,
+                         KOKKOS_LAMBDA(const member_type &team) {
+                             const int m = team.league_rank(); // material index
+                             for (int t = 0; t < ntemp; ++t) { // temperature index
+                                 Kokkos::parallel_for(Kokkos::TeamThreadRange(team, ngroup),
+                                                      [&](const int g) { // group index
+                                                          double decom = sigma_s_l(m, t, g);
+                                                          Kokkos::parallel_for(Kokkos::ThreadVectorRange(team, ngroup),
+                                                                               [&](const int j) { // group index
+                                                                                   scattering_matrix_l(m, t, g,
+                                                                                                       j) /= decom;
+                                                                               });
+
+                                                          // cumulative sum
+                                                          team.team_barrier();
+
+                                                          double partial_sum = 0.0;
+                                                          Kokkos::parallel_scan(Kokkos::ThreadVectorRange(team, ngroup),
+                                                                                [&](const int j, double &sum,
+                                                                                    const bool final) {
+                                                                                    sum += scattering_matrix_l(m, t, g,
+                                                                                                               j);
+                                                                                    if (final) {
+                                                                                        scattering_matrix_l(m, t, g,
+                                                                                                            j) = sum;
+                                                                                    }
+                                                                                }, partial_sum);
+                                                      });
+                             }
+                         });
 }
 
 
@@ -355,8 +424,21 @@ void MultiGroupXS::print() {
     for (int i = 0; i < nMaterials_; ++i) {
         for (int j = 0; j < nTemps_; ++j) {
             for (int g = 0; g < nEnergyGroups_; ++g) {
+                printf("  %5.3f,", sigma_s_h(i, j, g));
+            }
+            printf("\n");
+        }
+    }
+    printf("\n\n\n");
+
+    printf("Scattering Matrix:\n");
+    auto scattering_matrix_h = Kokkos::create_mirror_view(scattering_matrix_);
+    Kokkos::deep_copy(scattering_matrix_h, scattering_matrix_);
+    for (int i = 0; i < nMaterials_; ++i) {
+        for (int j = 0; j < nTemps_; ++j) {
+            for (int g = 0; g < nEnergyGroups_; ++g) {
                 for (int g2 = 0; g2 < nEnergyGroups_; ++g2) {
-                    printf("  %5.3f,", sigma_s_h(i, j, g, g2));
+                    printf("  %5.3f,", scattering_matrix_h(i, j, g, g2));
                 }
                 printf("\n");
             }

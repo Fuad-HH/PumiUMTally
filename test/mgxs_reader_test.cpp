@@ -41,10 +41,10 @@ TEST_CASE("Test reader") {
 
         auto absorption_host = Kokkos::create_mirror_view(mgxs.getSigmaA());
         auto total_host = Kokkos::create_mirror_view(mgxs.getSigmaT());
-        auto scatter_host = Kokkos::create_mirror_view(mgxs.getSigmaS());
+        auto scatter_matrix_host = Kokkos::create_mirror_view(mgxs.getScatteringMatrix());
         Kokkos::deep_copy(absorption_host, mgxs.getSigmaA());
         Kokkos::deep_copy(total_host, mgxs.getSigmaT());
-        Kokkos::deep_copy(scatter_host, mgxs.getSigmaS());
+        Kokkos::deep_copy(scatter_matrix_host, mgxs.getScatteringMatrix());
 
         REQUIRE(absorption_host.extent(0) == 1); // number of materials
         REQUIRE(absorption_host.extent(1) == 1); // number of temperatures
@@ -53,14 +53,14 @@ TEST_CASE("Test reader") {
         REQUIRE(total_host.extent(1) == 1); // number of temperatures
         REQUIRE(total_host.extent(2) == mgxs.getNumEnergyGroups()); // number of energy groups
 
-        REQUIRE(scatter_host.extent(0) == 1); // number of materials
-        REQUIRE(scatter_host.extent(1) == 1); // number of temperatures
-        REQUIRE(scatter_host.extent(2) == mgxs.getNumEnergyGroups()); // number of energy groups
-        REQUIRE(scatter_host.extent(3) == mgxs.getNumEnergyGroups()); // number of energy groups
+        REQUIRE(scatter_matrix_host.extent(0) == 1); // number of materials
+        REQUIRE(scatter_matrix_host.extent(1) == 1); // number of temperatures
+        REQUIRE(scatter_matrix_host.extent(2) == mgxs.getNumEnergyGroups()); // number of energy groups
+        REQUIRE(scatter_matrix_host.extent(3) == mgxs.getNumEnergyGroups()); // number of energy groups
 
         std::vector<double> expected_absorption = {0, 1};
         std::vector<double> expected_total = {100, 33.3333};
-        std::vector<double> expected_scatter = {100, 100, 100, 100};
+        std::vector<double> expected_scatter = {0.5, 1, 0.5, 1};
 
         for(int i=0; i<2; ++i) {
             printf("Absorption %d: %f\n", i, absorption_host(0,0, i));
@@ -70,8 +70,8 @@ TEST_CASE("Test reader") {
         }
         for (int i=0; i<2; ++i) {
             for (int j=0; j<2; ++j) {
-                printf("Scatter %d %d: %f\n", i, j, scatter_host(0, 0, i, j));
-                REQUIRE_THAT(scatter_host(0, 0, i, j), Catch::Matchers::WithinAbs(expected_scatter[i*2+j], margin));
+                printf("Scatter %d %d: %f\n", i, j, scatter_matrix_host(0, 0, i, j));
+                REQUIRE_THAT(scatter_matrix_host(0, 0, i, j), Catch::Matchers::WithinAbs(expected_scatter[i * 2 + j], margin));
             }
         }
     }
