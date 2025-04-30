@@ -18,8 +18,8 @@ typedef Kokkos::Random_XorShift64_Pool<Kokkos::DefaultExecutionSpace>
 
 class SourceGeometry {
 public:
-  virtual void sampleUniformly(Kokkos::View<double *> location,
-                               random_pool_t rpool) = 0;
+  virtual void sampleUniformPositions(Kokkos::View<double *> location,
+                                      random_pool_t rpool) = 0;
 };
 
 class Sphere : public SourceGeometry {
@@ -32,8 +32,8 @@ public:
   double cy;
   double cz;
 
-  void sampleUniformly(Kokkos::View<double *> location,
-                       random_pool_t rpool) override;
+  void sampleUniformPositions(Kokkos::View<double *> location,
+                              random_pool_t rpool) override;
 };
 
 class Box : public SourceGeometry {
@@ -50,8 +50,8 @@ public:
   double zMin;
   double zMax;
 
-  void sampleUniformly(Kokkos::View<double *> location,
-                       random_pool_t rpool) override;
+  void sampleUniformPositions(Kokkos::View<double *> location,
+                              random_pool_t rpool) override;
 };
 
 struct Source {
@@ -63,25 +63,32 @@ class PumiTransport {
 public:
   PumiTransport(std::string meshFile, std::string xsFile, size_t nParticles,
                 int &argc, char **argv,
-                Source source = {std::make_unique<Box>(0, 1, 0, 1, 0, 1), 0},
+                Source source = {std::make_unique<Box>(0, 1, 0, 1, 0, 1), 1},
                 random_pool_t rpool = random_pool_t(SEED));
   void initializeSource();
   void writePositionsForGNUPlot(std::string gnuplotFileName);
+  void nextCollision();
+  size_t getNumParticles() const { return nParticles_; }
 
   random_pool_t randomPool;
   Source source;
   std::string meshFileName;
-  Kokkos::View<int *[2]>
-      materialTemperature; // TODO: for multi-material simulations, it will
-                           // needed. Now, it's 0,0
+  Kokkos::View<int *[3]> matTempEg; // TODO: for multi-material simulations, it
+                                    // will needed. Now, it's 0,0
   Kokkos::View<double *> particleEnergy;
+  Kokkos::View<int *> particleEnergyGroup;
   Kokkos::View<double *> particleWeight;
-  Kokkos::View<double *> particleOrigins;
-  Kokkos::View<double *> particleDestinations;
+  Kokkos::View<double *> particlePosition;
+  Kokkos::View<double *> particleDirection;
 
 private:
   size_t nParticles_;
   MultiGroupXS mgxs;
 };
+
+KOKKOS_FUNCTION
+void sampleUnformDirection(random_pool_t rpool, double direction[]);
+void sampleInitialUniformDirection(Kokkos::View<double *> direction,
+                                   random_pool_t rpool);
 
 #endif // PUMITALLYOPENMC_PUMITRANSPORT_H

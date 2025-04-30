@@ -11,17 +11,19 @@ PumiTransport::PumiTransport(std::string meshFile, std::string xsFile,
     : mgxs(xsFile), meshFileName(meshFile), nParticles_(nParticles),
       randomPool(rpool), source(std::move(source)) {
 
-  materialTemperature =
-      Kokkos::View<int *[2]>("materialAndTemperature", nParticles_);
+  matTempEg =
+      Kokkos::View<int *[3]>("materialTemperatureEnergygroup", nParticles_);
   particleEnergy = Kokkos::View<double *>("particleEnergy", nParticles_);
+  particleEnergyGroup = Kokkos::View<int *>("particleEnergyGroup", nParticles_);
   particleWeight = Kokkos::View<double *>("particleWeight", nParticles_);
-  particleOrigins = Kokkos::View<double *>("particleOrigins", nParticles_ * 3);
-  particleDestinations =
+  particlePosition =
+      Kokkos::View<double *>("particlePosition", nParticles_ * 3);
+  particleDirection =
       Kokkos::View<double *>("particleDirections", nParticles_ * 3);
 }
 
-void Sphere::sampleUniformly(Kokkos::View<double *> location,
-                             random_pool_t rpool) {
+void Sphere::sampleUniformPositions(Kokkos::View<double *> location,
+                                    random_pool_t rpool) {
   auto R = radius;
   double center[3] = {cx, cy, cz};
   Kokkos::parallel_for(
@@ -46,8 +48,8 @@ void Sphere::sampleUniformly(Kokkos::View<double *> location,
       });
 }
 
-void Box::sampleUniformly(Kokkos::View<double *> location,
-                          random_pool_t rpool) {
+void Box::sampleUniformPositions(Kokkos::View<double *> location,
+                                 random_pool_t rpool) {
   double min[3] = {xMin, yMin, zMin};
   double max[3] = {xMax, yMax, zMax};
 
@@ -66,7 +68,7 @@ void Box::sampleUniformly(Kokkos::View<double *> location,
 }
 
 void PumiTransport::initializeSource() {
-  source.geometry_p->sampleUniformly(particleOrigins, randomPool);
+  source.geometry_p->sampleUniformPositions(particlePosition, randomPool);
   auto E = source.energy;
   auto particleWeight_l = particleWeight;
   auto particleEnergy_l = particleEnergy;
@@ -76,6 +78,10 @@ void PumiTransport::initializeSource() {
         particleWeight_l(i) = 1.0;
         particleEnergy_l(i) = E;
       });
+  mgxs.findEnergyGroupIndex(particleEnergy_l, particleEnergyGroup);
+
+  auto particle_direction_l = particleDirection;
+  sampleInitialUniformDirection(particle_direction_l, randomPool);
 }
 
 void PumiTransport::writePositionsForGNUPlot(std::string gnuplotFileName) {
@@ -86,8 +92,8 @@ void PumiTransport::writePositionsForGNUPlot(std::string gnuplotFileName) {
     return;
   }
 
-  auto particle_origins_host = Kokkos::create_mirror_view(particleOrigins);
-  Kokkos::deep_copy(particle_origins_host, particleOrigins);
+  auto particle_origins_host = Kokkos::create_mirror_view(particlePosition);
+  Kokkos::deep_copy(particle_origins_host, particlePosition);
 
   for (size_t i = 0; i < nParticles_; ++i) {
     gnuplotFile << particle_origins_host(3 * i) << " "
@@ -96,4 +102,62 @@ void PumiTransport::writePositionsForGNUPlot(std::string gnuplotFileName) {
   }
 
   gnuplotFile.close();
+}
+
+KOKKOS_FUNCTION
+void sampleUnformDirection(random_pool_t rpool, double direction[]) {
+  // fill in the direction vector
+  auto generator = rpool.get_state();
+  double x = generator.drand(-1, 1);
+  double y = generator.drand(-1, 1);
+  double z = generator.drand(-1, 1);
+  rpool.free_state(generator);
+
+  const double norm = Kokkos::sqrt(x * x + y * y + z * z);
+  if (norm != 0.0f) {
+    x /= norm;
+    y /= norm;
+    z /= norm;
+  }
+  direction[0] = x;
+  direction[1] = y;
+  direction[2] = z;
+}
+
+void sampleInitialUniformDirection(Kokkos::View<double *> direction,
+                                   random_pool_t rpool) {
+  Kokkos::parallel_for(
+      "sample uniform direction", direction.size() / 3,
+      KOKKOS_LAMBDA(const int i) {
+        double dir[3];
+        sampleUnformDirection(rpool, dir);
+        direction(3 * i) = dir[0];
+        direction(3 * i + 1) = dir[1];
+        direction(3 * i + 2) = dir[2];
+      });
+}
+
+void PumiTransport::nextCollision() {
+  auto weights_l = particleWeight;
+  auto energies_l = particleEnergy;
+  auto positions_l = particlePosition;
+  auto directions_l = particleDirection;
+  auto material_l = matTempEg;
+
+  auto sigma_t_l = mgxs.getSigmaT();
+  auto sigma_s_l = mgxs.getSigmaS();
+  auto sigma_a_l = mgxs.getSigmaA();
+  auto scatter_l = mgxs.getScatteringMatrix();
+
+  // update weights
+  Kokkos::parallel_for(
+      "update weights", nParticles_, KOKKOS_LAMBDA(const int i) {
+        auto matid = material_l(i, 0);
+        auto temp = material_l(i, 1);
+        weights_l(i) *= .1;
+      });
+
+  // scatter
+  // update energy
+  // update position
 }

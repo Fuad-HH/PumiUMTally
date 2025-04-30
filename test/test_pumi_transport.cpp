@@ -19,10 +19,28 @@ TEST_CASE("Test Transport") {
 
     auto sphereSourceTransport =
         PumiTransport("notused", "assets/mgxs.h5", 10000, argc, argv,
-                      {std::make_unique<Sphere>(3.0, 1, 2, 3), 0});
+                      {std::make_unique<Sphere>(3.0, 1, 2, 3), 1.0});
     sphereSourceTransport.initializeSource();
     // TODO: remove this line
     sphereSourceTransport.writePositionsForGNUPlot("../build/test_sphere.dat");
+
+    // Initial Energy Group
+    auto energy_group_host =
+        Kokkos::create_mirror_view(sphereSourceTransport.particleEnergyGroup);
+    auto energy_host =
+        Kokkos::create_mirror_view(sphereSourceTransport.particleEnergy);
+    Kokkos::deep_copy(energy_group_host,
+                      sphereSourceTransport.particleEnergyGroup);
+    Kokkos::deep_copy(energy_host, sphereSourceTransport.particleEnergy);
+    REQUIRE(energy_group_host.size() ==
+            sphereSourceTransport.getNumParticles());
+    REQUIRE(energy_host.size() == sphereSourceTransport.getNumParticles());
+
+    for (int i = 0; i < sphereSourceTransport.getNumParticles(); ++i) {
+      printf("Particle %d: energy_host %f  group %d n", i, energy_host(i),
+             energy_group_host(i));
+      REQUIRE(energy_group_host(i) == 1);
+    }
   }
   Kokkos::finalize();
 }

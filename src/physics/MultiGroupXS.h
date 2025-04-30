@@ -40,6 +40,9 @@ public:
   void rowSumScatteringMatrix();
   void normalizeScatteringMatrix();
 
+  void findEnergyGroupIndex(Kokkos::View<double *> energy,
+                            Kokkos::View<int *> group) const;
+
 private:
   std::string sourceFileName_;
   int nEnergyGroups_;

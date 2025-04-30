@@ -3,6 +3,7 @@
 //
 
 #include "MultiGroupXS.h"
+#include <Omega_h_for.hpp>
 #include <filesystem>
 #include <string>
 
@@ -482,4 +483,23 @@ void MultiGroupXS::print() {
   }
 
   printf("=>=============== MultiGroupXS ===============<=\n\n\n");
+}
+
+void MultiGroupXS::findEnergyGroupIndex(Kokkos::View<double *> energy,
+                                        Kokkos::View<int *> group) const {
+  auto group_edges_l = energyGroupEdges_;
+
+  Omega_h::parallel_for(
+      "findEnergyIndex", group.size(), OMEGA_H_LAMBDA(const int i) {
+        double energy_value = energy[i];
+        int group_index = -1;
+        for (int j = 0; j < group_edges_l.size() - 1; ++j) {
+          if (energy_value >= group_edges_l[j] &&
+              energy_value < group_edges_l[j + 1]) {
+            group_index = j;
+            break;
+          }
+        }
+        group[i] = group_index;
+      });
 }
