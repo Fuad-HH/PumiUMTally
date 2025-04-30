@@ -96,9 +96,22 @@ if(PUMI_ENABLE_PHYSICS)
         message(FATAL_ERROR "!!HDF5 not found")
     endif()
     add_library(pumitallyphysics)
-    target_sources(pumitallyphysics PUBLIC ${PUMI_PHYSICS_SOURCES})
+    target_sources(pumitallyphysics PRIVATE ${PUMI_PHYSICS_SOURCES})
     target_link_libraries(pumitallyphysics PUBLIC Omega_h::omega_h HDF5::HDF5)
     target_include_directories(pumitallyphysics PUBLIC ${HDF5_INCLUDE_DIRS})
+
+    add_executable(accelerated_monte_carlo
+        src/accelerated_monte_carlo.cpp
+    )
+    target_link_libraries(accelerated_monte_carlo
+        pumitallyopenmc
+        pumitallyphysics
+    )
+    target_include_directories(accelerated_monte_carlo
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    )
 endif ()
 ###################################################################
 
@@ -163,6 +176,41 @@ install(FILES
   ${CMAKE_CURRENT_BINARY_DIR}/pumitallyopenmcConfig.cmake
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/pumitallyopenmc
 )
+
+if(PUMI_ENABLE_PHYSICS)
+    install(TARGETS pumitallyphysics
+      EXPORT pumitallyopenmcTargets
+      LIBRARY DESTINATION   ${CMAKE_INSTALL_LIBDIR}
+      ARCHIVE DESTINATION   ${CMAKE_INSTALL_LIBDIR}
+      RUNTIME DESTINATION   ${CMAKE_INSTALL_BINDIR}
+      INCLUDES DESTINATION  ${CMAKE_INSTALL_INCLUDEDIR}
+            PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/pumitallyopenmc
+    )
+    install(EXPORT pumitallyopenmcTargets
+      FILE pumitallyopenmcTargets.cmake
+      NAMESPACE pumitallyopenmc::
+      DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/pumitallyopenmc
+    )
+    install(FILES
+      ${CMAKE_CURRENT_BINARY_DIR}/pumitallyopenmcConfig.cmake
+      DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/pumitallyopenmc
+    )
+
+    install(TARGETS accelerated_monte_carlo
+      EXPORT pumitallyopenmcTargets
+      RUNTIME DESTINATION   ${CMAKE_INSTALL_BINDIR}
+    )
+    install(EXPORT pumitallyopenmcTargets
+      FILE pumitallyopenmcTargets.cmake
+      NAMESPACE pumitallyopenmc::
+      DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/pumitallyopenmc
+    )
+    install(FILES
+      ${CMAKE_CURRENT_BINARY_DIR}/pumitallyopenmcConfig.cmake
+      DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/pumitallyopenmc
+    )
+endif()
+
 
 ###################################################################
 
