@@ -29,6 +29,7 @@ jobs:
         run: |
           git clone https://github.com/kokkos/kokkos.git
           cd kokkos
+          git checkout 580dba5
           mkdir build && cd build
           cmake .. -DCMAKE_INSTALL_PREFIX=$HOME/deps/kokkos -DKokkos_ENABLE_SERIAL=ON -DKokkos_ENABLE_OPENMP=ON -DKokkos_ENABLE_MPI=ON
           make -j$(nproc) && make install
@@ -53,7 +54,7 @@ jobs:
           cd Cabana
           git checkout 86b41a2
           mkdir build && cd build
-          cmake .. -DCMAKE_BUILD_TYPE="Release" -DCMAKE_INSTALL_PREFIX=$HOME/deps/cabana -DCMAKE_C_COMPILER=$(which mpicc) -DCMAKE_CXX_COMPILER=$(which mpicxx) -DKokkos_ROOT=$HOME/deps/kokkos -DCabana_ENABLE_TESTING=OFF -DCabana_ENABLE_EXAMPLES=OFF
+          cmake .. -DCMAKE_BUILD_TYPE="Release" -DCMAKE_INSTALL_PREFIX=$HOME/deps/cabana -DCMAKE_CXX_COMPILER=$(which mpicxx) -DKokkos_ROOT=$HOME/deps/kokkos -DCabana_ENABLE_TESTING=OFF -DCabana_ENABLE_EXAMPLES=OFF
           make -j$(nproc) && make install
 
       - name: Build Omega_h
