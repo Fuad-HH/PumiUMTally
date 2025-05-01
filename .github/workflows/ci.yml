@@ -53,7 +53,7 @@ jobs:
           cd Cabana
           git checkout 86b41a2
           mkdir build && cd build
-          cmake .. -DCMAKE_INSTALL_PREFIX=$HOME/deps/cabana -DCMAKE_C_COMPILER=$(which mpicc) -DCMAKE_CXX_COMPILER=$(which mpicxx) -DKokkos_ROOT=$HOME/deps/kokkos
+          cmake .. -DCMAKE_BUILD_TYPE="Release" -DCMAKE_INSTALL_PREFIX=$HOME/deps/cabana -DCMAKE_C_COMPILER=$(which mpicc) -DCMAKE_CXX_COMPILER=$(which mpicxx) -DKokkos_ROOT=$HOME/deps/kokkos -DCabana_ENABLE_TESTING=OFF -DCabana_ENABLE_EXAMPLES=OFF
           make -j$(nproc) && make install
 
       - name: Build Omega_h
