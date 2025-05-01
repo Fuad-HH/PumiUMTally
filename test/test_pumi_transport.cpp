@@ -79,6 +79,9 @@ TEST_CASE("Test Transport") {
              particle_directions_host(3 * i + 1),
              particle_directions_host(3 * i + 2));
     }
+
+    bool alive = sphereSourceTransport.areParticlesAlive();
+    REQUIRE(alive);
   }
   Kokkos::finalize();
 }

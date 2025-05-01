@@ -69,6 +69,7 @@ public:
   void writePositionsForGNUPlot(std::string gnuplotFileName);
   void nextCollision(random_pool_t rpool);
   size_t getNumParticles() const { return nParticles_; }
+  [[nodiscard]] bool areParticlesAlive();
 
   random_pool_t randomPool;
   Source source;

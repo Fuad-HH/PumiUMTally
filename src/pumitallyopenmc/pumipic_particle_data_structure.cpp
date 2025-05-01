@@ -153,9 +153,13 @@ struct PumiTallyImpl {
 
   void initialize_particle_location(double *init_particle_positions,
                                     int64_t size);
+  template <typename ViewType> void initialize_particle_location(ViewType data);
 
   void move_to_next_location(double *particle_destinations, int8_t *flying,
                              double *weights, int64_t size);
+  template <typename ViewType>
+  void move_to_next_location(ViewType particle_destinations,
+                             ViewType given_weights);
 
   void write_pumi_tally_mesh();
 
@@ -203,6 +207,21 @@ void PumiTallyImpl::initialize_particle_location(
 #endif
 }
 
+template <typename ViewType>
+void PumiTallyImpl::initialize_particle_location(ViewType data) {
+  assert(data.size() > 0);
+  assert(data.size() <= device_pos_buffer_.size());
+  auto device_pos_buffer_l = device_pos_buffer_;
+  Kokkos::parallel_for(
+      "copy init position d2d", data.size(),
+      KOKKOS_LAMBDA(int i) { device_pos_buffer_l[i] = data(i); });
+  Kokkos::fence();
+  search_initial_elements();
+}
+
+template void PumiTally::initialize_particle_location<Kokkos::View<double *>>(
+    Kokkos::View<double *> init_particle_positions);
+
 void PumiTallyImpl::move_to_next_location(double *particle_destinations,
                                           int8_t *flying, double *weights,
                                           int64_t size) {
@@ -243,6 +262,45 @@ void PumiTallyImpl::move_to_next_location(double *particle_destinations,
   Kokkos::fence();
 #endif
 }
+
+template <typename ViewType>
+void PumiTallyImpl::move_to_next_location(ViewType particle_destinations,
+                                          ViewType given_weights) {
+  assert(particle_destinations.size() > 0);
+  assert(particle_destinations.size() <= device_pos_buffer_.size());
+
+  auto pumi_ps_size_l = pumi_ps_size;
+
+  auto particle_dest = pumipic_ptcls->get<1>();
+  auto in_flight = pumipic_ptcls->get<3>();
+  auto particle_weights = pumipic_ptcls->get<4>();
+
+  auto set_particle_dest =
+      PS_LAMBDA(const int &e, const int &pid, const int &mask) {
+    if (mask > 0 && pid < pumi_ps_size_l) {
+      particle_dest(pid, 0) = particle_destinations(pid * 3 + 0);
+      particle_dest(pid, 1) = particle_destinations(pid * 3 + 1);
+      particle_dest(pid, 2) = particle_destinations(pid * 3 + 2);
+
+      particle_weights(pid) = given_weights(pid);
+      in_flight(pid) = 1;
+
+      printf("Particle %d moving to (%f, %f, %f) with weight %f\n", pid,
+             particle_dest(pid, 0), particle_dest(pid, 1),
+             particle_dest(pid, 2), particle_weights(pid));
+    }
+  };
+  pumipic::parallel_for(pumipic_ptcls.get(), set_particle_dest,
+                        "set particle position as dest");
+  bool migrate = iter_count_ % 100 == 0;
+  iter_count_++;
+  search_and_rebuild(false, migrate);
+  Kokkos::fence();
+}
+
+template void PumiTally::move_to_next_location<Kokkos::View<double *>>(
+    Kokkos::View<double *> particle_destinations,
+    Kokkos::View<double *> weights);
 
 void PumiTallyImpl::write_pumi_tally_mesh() {
   p_pumi_particle_at_elem_boundary_handler->finalizeAndWritePumiFlux(
@@ -783,6 +841,17 @@ void PumiTally::initialize_particle_location(double *init_particle_positions,
   std::chrono::duration<double> elapsed_seconds =
       std::chrono::steady_clock::now() - start_time;
   pimpl->tally_times.initialization_time += elapsed_seconds.count();
+}
+
+template <typename ViewType>
+void PumiTally::initialize_particle_location(ViewType init_particle_positions) {
+  pimpl->initialize_particle_location(init_particle_positions);
+}
+
+template <typename ViewType>
+void PumiTally::move_to_next_location(ViewType particle_destinations,
+                                      ViewType weights) {
+  pimpl->move_to_next_location(particle_destinations, weights);
 }
 
 void PumiTally::move_to_next_location(double *particle_destinations,

@@ -29,10 +29,16 @@ public:
   void initialize_particle_location(double *init_particle_positions,
                                     int64_t size);
 
+  template <typename ViewType>
+  void initialize_particle_location(ViewType init_particle_positions);
+
   // Get the new destination of the particles and move the particles to the new
   // destination
   void move_to_next_location(double *particle_destinations, int8_t *flying,
                              double *weights, int64_t size);
+
+  template <typename ViewType>
+  void move_to_next_location(ViewType particle_destinations, ViewType weights);
 
   // Normalize the tally and write the tally array to vtk file
   // Future: send the tally to openmc

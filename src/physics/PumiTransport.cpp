@@ -75,7 +75,7 @@ void PumiTransport::initializeSource() {
   auto nparticles = nParticles_;
   Kokkos::parallel_for(
       "init E and W", nparticles, KOKKOS_LAMBDA(const int i) {
-        particleWeight_l(i) = 1.0;
+        particleWeight_l(i) = 1000.0;
         particleEnergy_l(i) = E;
       });
   mgxs.findEnergyGroupIndex(particleEnergy_l, particleEnergyGroup);
@@ -194,13 +194,13 @@ void PumiTransport::nextCollision(random_pool_t rpool) {
         auto scatter = sigma_s_l(matid, temp, eg);
         auto total = sigma_t_l(matid, temp, eg);
 
-        weights_l(i) *= (1.0 - absorb) / total;
+        weights_l(i) = weights_l(i) * (1.0 - (absorb / total));
 
         // russian roulette
         auto generator = rpool.get_state();
         auto rand = generator.drand(0, 1);
         double p_kill = 1.0 - Kokkos::abs(weights_l(i)) / 0.2; // cutoff 0.2
-        weights_l(i) = (rand > p_kill) ? 1.0 : 0.0; // survival weight 1.0
+        weights_l(i) = (rand > p_kill) ? 1000.0 : 0.0; // survival weight 1.0
 
         // scatter
         auto rand2 = generator.drand(0, 1);
@@ -240,13 +240,31 @@ void PumiTransport::nextCollision(random_pool_t rpool) {
         directions_l(3 * i + 2) = new_direction[2];
 
         // get distance to next collision
-        double distance = -Kokkos::log(generator.drand(1e-100, 1)) / total;
+        double distance =
+            -Kokkos::log(generator.drand(1e-100, 1)) / total * 100;
 
         // update next position
         positions_l(3 * i) += distance * directions_l(3 * i);
         positions_l(3 * i + 1) += distance * directions_l(3 * i + 1);
         positions_l(3 * i + 2) += distance * directions_l(3 * i + 2);
+        // printf("Sample distance: %f, x: %f, y: %f, z: %f\n", distance,
+        //        positions_l(3 * i), positions_l(3 * i + 1),
+        //        positions_l(3 * i + 2));
 
         rpool.free_state(generator);
       });
+}
+
+bool PumiTransport::areParticlesAlive() {
+  // if all weights are 0, then all particles are dead
+  auto particle_weights_l = particleWeight;
+  double sum = 0.0;
+
+  Kokkos::parallel_reduce(
+      "sum weights", nParticles_,
+      KOKKOS_LAMBDA(const int i, double &local_sum) {
+        local_sum += particle_weights_l(i);
+      },
+      sum);
+  return sum > 1e-10;
 }
