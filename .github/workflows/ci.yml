@@ -38,6 +38,7 @@ jobs:
           mkdir build && cd build
           cmake .. -DCMAKE_INSTALL_PREFIX=$HOME/deps/kokkos \
                   -DKokkos_ENABLE_SERIAL=ON \
+                  -DBUILD_SHARED_LIBS=ON \
                   -DKokkos_ENABLE_OPENMP=OFF \
                   -DCMAKE_CXX_COMPILER=$(which mpicxx) \
                   -DCMAKE_C_COMPILER=$(which mpicc) \
@@ -49,6 +50,7 @@ jobs:
           git clone https://github.com/SCOREC/EnGPar.git
           cmake -S EnGPar -B engpar-build \
             -DCMAKE_INSTALL_PREFIX=$HOME/deps/engpar \
+            -DBUILD_SHARED_LIBS=ON \
             -DCMAKE_C_COMPILER=mpicc \
             -DCMAKE_CXX_COMPILER=mpicxx \
             -DCMAKE_CXX_FLAGS="-std=c++11" \
@@ -65,6 +67,7 @@ jobs:
           git checkout 86b41a2
           mkdir build && cd build
           cmake .. -DCMAKE_BUILD_TYPE="Release" \
+                  -DBUILD_SHARED_LIBS=ON \
                   -DCMAKE_INSTALL_PREFIX=$HOME/deps/cabana \
                   -DCMAKE_CXX_COMPILER=$(which mpicxx) \
                   -DKokkos_ROOT=$HOME/deps/kokkos \
@@ -79,6 +82,7 @@ jobs:
           cd omega_h
           mkdir build && cd build
           cmake .. -DCMAKE_INSTALL_PREFIX=$HOME/deps/omega_h \
+                  -DBUILD_SHARED_LIBS=ON \
                   -DCMAKE_C_COMPILER=$(which mpicc) \
                   -DCMAKE_CXX_COMPILER=$(which mpicxx) \
                   -DMPIEXEC_EXECUTABLE=srun \
@@ -95,6 +99,7 @@ jobs:
           git checkout make_search_class
           mkdir build && cd build
           cmake .. -DCMAKE_INSTALL_PREFIX=$HOME/deps/pumi_pic \
+                  -DBUILD_SHARED_LIBS=ON \
                   -DCMAKE_C_COMPILER=$(which mpicc) \
                   -DCMAKE_CXX_COMPILER=$(which mpicxx) \
                   -DKokkos_ROOT=$HOME/deps/kokkos \
