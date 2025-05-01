@@ -21,7 +21,7 @@ jobs:
       - name: Install build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake git build-essential libhdf5-dev libmpich-dev
+          sudo apt-get install -yq libhdf5-dev mpich libmpich-dev
 
       - name: Cache dependencies
         uses: actions/cache@v3
@@ -35,7 +35,12 @@ jobs:
           cd kokkos
           git checkout 580dba5
           mkdir build && cd build
-          cmake .. -DCMAKE_INSTALL_PREFIX=$HOME/deps/kokkos -DKokkos_ENABLE_SERIAL=ON -DKokkos_ENABLE_OPENMP=ON -DCMAKE_CXX_COMPILER=$(which mpicxx) -DCMAKE_C_COMPILER=$(which mpicc)
+          cmake .. -DCMAKE_INSTALL_PREFIX=$HOME/deps/kokkos \
+                  -DKokkos_ENABLE_SERIAL=ON \
+                  -DKokkos_ENABLE_OPENMP=OFF \
+                  -DCMAKE_CXX_COMPILER=$(which mpicxx) \
+                  -DCMAKE_C_COMPILER=$(which mpicc) \
+                  -DKokkos_ENABLE_CUDA_LAMBDA=off
           make -j$(nproc) && make install
           
       - name: Build EnGPar
@@ -58,7 +63,13 @@ jobs:
           cd Cabana
           git checkout 86b41a2
           mkdir build && cd build
-          cmake .. -DCMAKE_BUILD_TYPE="Release" -DCMAKE_INSTALL_PREFIX=$HOME/deps/cabana -DCMAKE_CXX_COMPILER=$(which mpicxx) -DKokkos_ROOT=$HOME/deps/kokkos -DCabana_ENABLE_TESTING=OFF -DCabana_ENABLE_EXAMPLES=OFF
+          cmake .. -DCMAKE_BUILD_TYPE="Release" \
+                  -DCMAKE_INSTALL_PREFIX=$HOME/deps/cabana \
+                  -DCMAKE_CXX_COMPILER=$(which mpicxx) \
+                  -DKokkos_ROOT=$HOME/deps/kokkos \
+                  -DCabana_ENABLE_TESTING=OFF \
+                  -DCabana_ENABLE_EXAMPLES=OFF \
+                  -DCMAKE_DISABLE_FIND_PACKAGE_HDF5=ON
           make -j$(nproc) && make install
 
       - name: Build Omega_h
@@ -66,7 +77,12 @@ jobs:
           git clone https://github.com/SCOREC/omega_h.git
           cd omega_h
           mkdir build && cd build
-          cmake .. -DCMAKE_INSTALL_PREFIX=$HOME/deps/omega_h -DCMAKE_C_COMPILER=$(which mpicc) -DCMAKE_CXX_COMPILER=$(which mpicxx)
+          cmake .. -DCMAKE_INSTALL_PREFIX=$HOME/deps/omega_h \
+                  -DCMAKE_C_COMPILER=$(which mpicc) \
+                  -DCMAKE_CXX_COMPILER=$(which mpicxx) \
+                  -DMPIEXEC_EXECUTABLE=srun \
+                  -DOmega_h_USE_KOKKOS=ON \
+                  -DKokkos_ROOT=$HOME/deps/kokkos
           make -j$(nproc) && make install
 
       - name: Build PUMIPIC
@@ -76,13 +92,22 @@ jobs:
           cd pumi-pic
           git checkout make_search_class
           mkdir build && cd build
-          cmake .. -DCMAKE_INSTALL_PREFIX=$HOME/deps/pumi_pic -DCMAKE_C_COMPILER=$(which mpicc) -DCMAKE_CXX_COMPILER=$(which mpicxx) -DKokkos_ROOT=$HOME/deps/kokkos -DOmega_h_ROOT=$HOME/deps/omega_h -DCabana_ROOT=$HOME/deps/cabana -DENABLE_CABANA=ON -DCMAKE_CXX_STANDARD=17 -DEnGPar_PREFIX=$HOME/deps/engpar -DEnGPar_DIR=$HOME/deps/engpar/lib/cmake/EnGPar
+          cmake .. -DCMAKE_INSTALL_PREFIX=$HOME/deps/pumi_pic \
+                  -DCMAKE_C_COMPILER=$(which mpicc) \
+                  -DCMAKE_CXX_COMPILER=$(which mpicxx) \
+                  -DKokkos_ROOT=$HOME/deps/kokkos \
+                  -DOmega_h_ROOT=$HOME/deps/omega_h 
+                  -DCabana_ROOT=$HOME/deps/cabana 
+                  -DENABLE_CABANA=ON \
+                  -DCMAKE_CXX_STANDARD=17 \
+                  -DEnGPar_PREFIX=$HOME/deps/engpar \
+                  -DEnGPar_DIR=$HOME/deps/engpar/lib/cmake/EnGPar
           make -j$(nproc) && make install
 
       - name: Build PumiUMTally
         run: |
           mkdir build && cd build
-          cmake .. -DCMAKE_C_COMPILER=$(which gcc) -DCMAKE_CXX_COMPILER=$(which mpicxx) -Dpumipic_ROOT=$HOME/deps/pumi_pic -DCabana_ROOT=$HOME/deps/cabana -DPUMI_MEASURE_TIME=ON -DHDF5_ROOT=/usr
+          cmake .. -DCMAKE_C_COMPILER=$(which mpicc) -DCMAKE_CXX_COMPILER=$(which mpicxx) -Dpumipic_ROOT=$HOME/deps/pumi_pic -DCabana_ROOT=$HOME/deps/cabana -DPUMI_MEASURE_TIME=ON -DHDF5_ROOT=/usr
           make -j$(nproc)
           ctest --output-on-failure -j$(nproc)
 
