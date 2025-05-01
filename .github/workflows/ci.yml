@@ -103,7 +103,7 @@ jobs:
                   -DCMAKE_C_COMPILER=$(which mpicc) \
                   -DCMAKE_CXX_COMPILER=$(which mpicxx) \
                   -DKokkos_ROOT=$HOME/deps/kokkos \
-                  -DOmega_h_ROOT=$HOME/deps/omega_h \
+                  -DOmega_h_PREFIX=/home/runner/deps/omega_h/lib/cmake \
                   -DCabana_ROOT=$HOME/deps/cabana \
                   -DENABLE_CABANA=ON \
                   -DCMAKE_CXX_STANDARD=17 \
