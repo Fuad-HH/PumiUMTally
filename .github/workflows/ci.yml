@@ -96,8 +96,8 @@ jobs:
                   -DCMAKE_C_COMPILER=$(which mpicc) \
                   -DCMAKE_CXX_COMPILER=$(which mpicxx) \
                   -DKokkos_ROOT=$HOME/deps/kokkos \
-                  -DOmega_h_ROOT=$HOME/deps/omega_h 
-                  -DCabana_ROOT=$HOME/deps/cabana 
+                  -DOmega_h_ROOT=$HOME/deps/omega_h \ 
+                  -DCabana_ROOT=$HOME/deps/cabana \ 
                   -DENABLE_CABANA=ON \
                   -DCMAKE_CXX_STANDARD=17 \
                   -DEnGPar_PREFIX=$HOME/deps/engpar \
