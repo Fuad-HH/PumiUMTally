@@ -85,7 +85,7 @@ jobs:
                   -DMPIEXEC_EXECUTABLE=srun \
                   -DOmega_h_USE_Kokkos=ON \ 
                   -DOmega_h_USE_MPI=ON \
-                  -DKokkos_DIR=$HOME/deps/kokkos/lib/cmake/Kokkos
+                  -DKokkos_DIR=/home/runner/deps/kokkos/lib/cmake/Kokkos/
           make -j$(nproc) && make install
 
       - name: Build PUMIPIC
