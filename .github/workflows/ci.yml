@@ -50,7 +50,8 @@ jobs:
       - name: Build Cabana
         run: |
           git clone https://github.com/ECP-copa/Cabana.git
-          cd Cabana 86b41a2
+          cd Cabana
+          git checkout 86b41a2
           mkdir build && cd build
           cmake .. -DCMAKE_INSTALL_PREFIX=$HOME/deps/cabana -DCMAKE_C_COMPILER=$(which mpicc) -DCMAKE_CXX_COMPILER=$(which mpicxx) -DKokkos_ROOT=$HOME/deps/kokkos
           make -j$(nproc) && make install
