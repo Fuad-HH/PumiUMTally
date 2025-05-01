@@ -14,9 +14,6 @@ jobs:
         with:
           ref: physics_kernel
 
-      - name: Set up CMake
-        uses: lukka/get-cmake@v3
-
       - name: Install build tools
         run: |
           sudo apt-get update
