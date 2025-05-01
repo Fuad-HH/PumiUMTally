@@ -82,7 +82,7 @@ jobs:
                   -DCMAKE_C_COMPILER=$(which mpicc) \
                   -DCMAKE_CXX_COMPILER=$(which mpicxx) \
                   -DMPIEXEC_EXECUTABLE=srun \
-                  -DOmega_h_USE_KOKKOS=ON \
+                  -DOmega_h_USE_Kokkos=ON \ 
                   -DOmega_h_USE_MPI=ON \
                   -DKokkos_ROOT=$HOME/deps/kokkos
           make -j$(nproc) && make install
