@@ -82,9 +82,9 @@ jobs:
                   -DCMAKE_C_COMPILER=$(which mpicc) \
                   -DCMAKE_CXX_COMPILER=$(which mpicxx) \
                   -DMPIEXEC_EXECUTABLE=srun \
-                  -DOmega_h_USE_Kokkos=ON \ 
+                  -DOmega_h_USE_Kokkos=ON \
+                  -DKokkos_PREFIX=/home/runner/deps/kokkos/lib/cmake \
                   -DOmega_h_USE_MPI=ON \
-                  -DKokkos_PREFIX=/home/runner/deps/kokkos/lib/cmake
           make -j$(nproc) && make install
 
       - name: Build PUMIPIC
