@@ -51,6 +51,7 @@ jobs:
 
       - name: Build PUMIPIC
         run: |
+          export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH:$HOME/deps/kokkos:$HOME/deps/cabana:$HOME/deps/omega_h
           git clone https://github.com/SCOREC/pumi-pic.git
           cd pumi-pic
           mkdir build && cd build
