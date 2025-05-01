@@ -32,6 +32,20 @@ jobs:
           mkdir build && cd build
           cmake .. -DCMAKE_INSTALL_PREFIX=$HOME/deps/kokkos -DKokkos_ENABLE_SERIAL=ON -DKokkos_ENABLE_OPENMP=ON -DKokkos_ENABLE_MPI=ON
           make -j$(nproc) && make install
+          
+      - name: Build EnGPar
+        run: |
+          git clone https://github.com/SCOREC/EnGPar.git
+          cmake -S EnGPar -B engpar-build \
+            -DCMAKE_INSTALL_PREFIX=$HOME/deps/engpar \
+            -DCMAKE_C_COMPILER=mpicc \
+            -DCMAKE_CXX_COMPILER=mpicxx \
+            -DCMAKE_CXX_FLAGS="-std=c++11" \
+            -DBUILD_SHARED_LIBS=ON \
+            -DENABLE_PARMETIS=OFF \
+            -DENABLE_PUMI=OFF \
+            -DIS_TESTING=OFF
+          cmake --build engpar-build --target install -j
 
       - name: Build Cabana
         run: |
@@ -51,7 +65,7 @@ jobs:
 
       - name: Build PUMIPIC
         run: |
-          export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH:$HOME/deps/kokkos:$HOME/deps/cabana:$HOME/deps/omega_h
+          export CMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH:$HOME/deps/kokkos:$HOME/deps/cabana:$HOME/deps/omega_h:$HOME/deps/engpar
           git clone https://github.com/SCOREC/pumi-pic.git
           cd pumi-pic
           mkdir build && cd build
