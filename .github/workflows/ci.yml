@@ -76,12 +76,14 @@ jobs:
         run: |
           git clone https://github.com/SCOREC/omega_h.git
           cd omega_h
+          git checkout bce042b6
           mkdir build && cd build
           cmake .. -DCMAKE_INSTALL_PREFIX=$HOME/deps/omega_h \
                   -DCMAKE_C_COMPILER=$(which mpicc) \
                   -DCMAKE_CXX_COMPILER=$(which mpicxx) \
                   -DMPIEXEC_EXECUTABLE=srun \
                   -DOmega_h_USE_KOKKOS=ON \
+                  -DOmega_h_USE_MPI=ON \
                   -DKokkos_ROOT=$HOME/deps/kokkos
           make -j$(nproc) && make install
 
