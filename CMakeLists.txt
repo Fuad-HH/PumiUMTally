@@ -8,6 +8,7 @@ option(BUILD_SHARED_LIBS                    "Build shared libraries"        ON)
 option(PUMITALLYOPENMC_ENABLE_TESTS         "Enable tests"                  ON)
 option(PUMI_USE_KOKKOS_CUDA                 "Use CUDA"                      OFF)
 option(PUMI_MEASURE_TIME                    "Measure time"                  OFF)
+option(PUMI_ENABLE_DEGAS2                   "Enable Degas2"                 ON)
 ###################################################################
 
 ############################ CLANG ################################
@@ -32,6 +33,18 @@ set(PUMITALLYOPENMC_HEADERS
 set(PUMITALLYOPENMC_SOURCES
         src/pumitallyopenmc/pumipic_particle_data_structure.cpp
 )
+
+if(PUMI_ENABLE_DEGAS2)
+    set(PUMI_DEGAS2_HEADERS
+            src/physics/degas2/DG2Physics.h
+            src/physics/degas2/DG2CrossSection.h
+    )
+    set(PUMI_DEGAS2_SOURCES
+            src/physics/degas2/DG2Physics.cpp
+            src/physics/degas2/DG2CrossSection.cpp
+    )
+endif()
+
 
 
 ################################## Testing ########################
@@ -75,6 +88,14 @@ if(PUMI_MEASURE_TIME)
     endif()
 
     target_compile_definitions(pumitallyopenmc PRIVATE -DPUMI_MEASURE_TIME)
+endif()
+
+if(PUMI_ENABLE_DEGAS2)
+    find_package(HDF5 REQUIRED COMPONENTS CXX)
+    add_library(pumitally_degas2)
+    target_sources(pumitally_degas2 PRIVATE ${PUMI_DEGAS2_SOURCES})
+    target_link_libraries(pumitally_degas2 PUBLIC Omega_h::omega_h HDF5::HDF5)
+    target_include_directories(pumitally_degas2 PUBLIC ${HDF5_INCLUDE_DIRS})
 endif()
 ###################################################################
 
@@ -139,6 +160,26 @@ install(FILES
   ${CMAKE_CURRENT_BINARY_DIR}/pumitallyopenmcConfig.cmake
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/pumitallyopenmc
 )
+
+if(PUMI_ENABLE_DEGAS2)
+    install(TARGETS pumitally_degas2
+      EXPORT pumitallyopenmcTargets
+      LIBRARY DESTINATION   ${CMAKE_INSTALL_LIBDIR}
+      ARCHIVE DESTINATION   ${CMAKE_INSTALL_LIBDIR}
+      RUNTIME DESTINATION   ${CMAKE_INSTALL_BINDIR}
+      INCLUDES DESTINATION  ${CMAKE_INSTALL_INCLUDEDIR}
+            PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/pumitallyopenmc
+    )
+    install(EXPORT pumitallyopenmcTargets
+      FILE pumitally_degas2Targets.cmake
+      NAMESPACE pumitallyopenmc::
+      DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/pumitallyopenmc
+    )
+    install(FILES
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/physics/degas2/DG2Physics.h
+      DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/pumitallyopenmc/physics/degas2
+    )
+endif()
 
 ###################################################################
 
