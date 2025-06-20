@@ -33,9 +33,17 @@ class DG2Physics {
 public:
   DG2Physics(const std::string &cross_section_file, const int num_particles,
              const int seed = SEED)
-      : random_pool_(seed), cross_section_(cross_section_file) {
+      : random_pool(seed), cross_section(cross_section_file) {
     // Initialize particle velocities
-    particle_velocities_ =
+    particle_velocities =
+        Kokkos::View<double *[3]>("particle_velocities", num_particles);
+  }
+
+  DG2Physics(const DG2CrossSection cross_section, const int num_particles,
+             const int seed = SEED)
+      : random_pool(seed), cross_section(cross_section) {
+    // Initialize particle velocities
+    particle_velocities =
         Kokkos::View<double *[3]>("particle_velocities", num_particles);
   }
 
@@ -43,17 +51,23 @@ public:
   // change direction
   KOKKOS_FUNCTION
   void sample_collision_distance(ParticleInfo &particle_info,
-                                 const FieldInfo &field_info);
+                                 const FieldInfo &field_info) const {
+    // example of sampling a random number
+    auto rand_gen = random_pool.get_state();
+    double x = rand_gen.drand(0., 1.);
+    random_pool.free_state(rand_gen);
+
+    double y =
+        x * cross_section.sigma_a(0, 0, 0); // Example usage of cross_section
+  }
 
   // collision event
   KOKKOS_FUNCTION
   void collide_particle(ParticleInfo &particle_info,
-                        const FieldInfo &field_info);
+                        const FieldInfo &field_info) const {}
+  random_pool_t random_pool;
+  DG2CrossSection cross_section;
 
-private:
-  random_pool_t random_pool_;
-  DG2CrossSection cross_section_;
-
-  Kokkos::View<double *[3]> particle_velocities_;
+  Kokkos::View<double *[3]> particle_velocities;
 };
 #endif // PUMITALLYOPENMC_DG2PHYSICS_H

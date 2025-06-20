@@ -1,5 +1,5 @@
 //
-// Created by hasanm4 on 6/20/25.
+// Created by Fuad Hasans on 6/20/25.
 //
 
 #include "DG2CrossSection.h"
