@@ -73,11 +73,11 @@ public:
     double mp {938.27e6/(3e10*3e10)}; //eV/c^2 = eV*s^2/cm^2
     double mag2 {2*particle_info.energy_group/mp}; //cm^2/s^2
 
-    double coef[9];
+    double coef2[9];
 
-    coef[0] = -3.271396786375e1; coef[1] = 1.353655609057e1; coef[2] = -5.739328757388;
-    coef[3] = 1.563154982022; coef[4] = -2.877056004391e-1; coef[5] = 3.482559773737e-2;
-    coef[6] = -2.631976175590e-3; coef[7] = 1.119543953861e-4; coef[8] = -2.039149852002e-6;
+    coef2[0] = -3.271396786375e1; coef2[1] = 1.353655609057e1; coef2[2] = -5.739328757388;
+    coef2[3] = 1.563154982022; coef2[4] = -2.877056004391e-1; coef2[5] = 3.482559773737e-2;
+    coef2[6] = -2.631976175590e-3; coef2[7] = 1.119543953861e-4; coef2[8] = -2.039149852002e-6;
 
     double lnsigma_ion {0}; //cm^2
     for (int i=0; i<9; i++) {
@@ -144,7 +144,6 @@ public:
   void collide_particle(ParticleInfo &particle_info,
                         const FieldInfo &field_info) const {
 
-	using namespace std::numbers
 	//Generate Random Numbers
 	auto rand_gen = random_pool.get_state();
     double x1 = rand_gen.drand(0., 1.);
@@ -220,9 +219,9 @@ public:
 	//Compute New Direction and Energy and set particle info
 	//Compute 3 Maxwellian (Gaussian) distributed velocities (cm/s)
 
-	auto ux = std::sqrt(field_info.ion_temperature/mp)*std::sqrt(-2 * log(x1))*cos(2*std::numbers::pi*x2);
-    auto uy = std::sqrt(field_info.ion_temperature/mp)*std::sqrt(-2 * log(x1))*sin(2*std::numbers::pi*x2);
-	auto uz = std::sqrt(field_info.ion_temperature/mp)*std::sqrt(-2 * log(y1))*sin(2*std::numbers::pi*y2);
+	auto ux = std::sqrt(field_info.ion_temperature/mp)*std::sqrt(-2 * log(x1))*cos(2*M_PI*x2);
+    auto uy = std::sqrt(field_info.ion_temperature/mp)*std::sqrt(-2 * log(x1))*sin(2*M_PI*x2);
+	auto uz = std::sqrt(field_info.ion_temperature/mp)*std::sqrt(-2 * log(y1))*sin(2*M_PI*y2);
 
 	auto mag_u = std::sqrt(ux*ux + uy*uy + uz*uz);
 
