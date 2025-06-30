@@ -80,7 +80,7 @@ public:
 
     double lnsigma_ion {0}; //cm^2
     for (int i=0; i<9; i++) {
-        lnsigma_ion += coef2[i]*std::pow(log(field_info.electron_temperature),i);
+        lnsigma_ion += coef2[i]*std::pow(logf(field_info.electron_temperature),i);
     }
     double sigma_ion {exp(lnsigma_ion)/sqrt(mag2)};
 
@@ -126,13 +126,13 @@ public:
     double lnalpha {0};
     for (int i = 0; i < 9; i++) {
         for (int j = 0; j < 9; j++) {
-            lnalpha += coef[i][j]*std::pow(log(particle_info.energy_group),i)*std::pow(log(field_info.ion_temperature),j);
+            lnalpha += coef[i][j]*std::pow(logf(particle_info.energy_group),i)*std::pow(logf(field_info.ion_temperature),j);
         }
     }
     double sigma_cx = std::exp(lnalpha)/sqrt(mag2);
 
 	//Generate distance and move particle
-    double l =-log(x)/(field_info.electron_density*sigma_ion+field_info.ion_density*sigma_cx); //cm. n in cm^-3
+    double l =-logf(x)/(field_info.electron_density*sigma_ion+field_info.ion_density*sigma_cx); //cm. n in cm^-3
     particle_info.position[0] += l*particle_info.direction[0];
     particle_info.position[1] += l*particle_info.direction[1];
     particle_info.position[2] += l*particle_info.direction[2];
@@ -164,7 +164,7 @@ public:
 
     double lnsigma_ion {0}; //cm^2
     for (int i=0; i<9; i++) {
-        lnsigma_ion += coef2[i]*std::pow(log(field_info.electron_temperature),i);
+        lnsigma_ion += coef2[i]*std::pow(logf(field_info.electron_temperature),i);
     }
     double sigma_ion {exp(lnsigma_ion)/sqrt(mag2)};
 
@@ -210,7 +210,7 @@ public:
     double lnalpha {0};
     for (int i = 0; i < 9; i++) {
         for (int j = 0; j < 9; j++) {
-            lnalpha += coef[i][j]*std::pow(log(particle_info.energy_group),i)*std::pow(log(field_info.ion_temperature),j);
+            lnalpha += coef[i][j]*std::pow(logf(particle_info.energy_group),i)*std::pow(logf(field_info.ion_temperature),j);
         }
     }
     double sigma_cx = std::exp(lnalpha)/sqrt(mag2);
@@ -218,9 +218,9 @@ public:
 	//Compute New Direction and Energy and set particle info
 	//Compute 3 Maxwellian (Gaussian) distributed velocities (cm/s)
 
-	auto ux = std::sqrt(field_info.ion_temperature/mp)*std::sqrt(-2 * log(x1))*cos(2*M_PI*x2);
-    auto uy = std::sqrt(field_info.ion_temperature/mp)*std::sqrt(-2 * log(x1))*sin(2*M_PI*x2);
-	auto uz = std::sqrt(field_info.ion_temperature/mp)*std::sqrt(-2 * log(y1))*sin(2*M_PI*y2);
+	auto ux = std::sqrt(field_info.ion_temperature/mp)*std::sqrt(-2 * logf(x1))*cos(2*M_PI*x2);
+    auto uy = std::sqrt(field_info.ion_temperature/mp)*std::sqrt(-2 * logf(x1))*sin(2*M_PI*x2);
+	auto uz = std::sqrt(field_info.ion_temperature/mp)*std::sqrt(-2 * logf(y1))*sin(2*M_PI*y2);
 
 	auto mag_u = std::sqrt(ux*ux + uy*uy + uz*uz);
 
