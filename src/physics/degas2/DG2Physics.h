@@ -63,7 +63,6 @@ public:
   KOKKOS_FUNCTION
   void sample_collision_distance(ParticleInfo &particle_info,
                                  const FieldInfo &field_info) const {
-    using namespace std::numbers;
 	// example of sampling a random number
     auto rand_gen = random_pool.get_state();
     double x = rand_gen.drand(0., 1.);
@@ -73,7 +72,7 @@ public:
     double mp {938.27e6/(3e10*3e10)}; //eV/c^2 = eV*s^2/cm^2
     double mag2 {2*particle_info.energy_group/mp}; //cm^2/s^2
 
-    double coef2[9];
+    double coef2 [9];
 
     coef2[0] = -3.271396786375e1; coef2[1] = 1.353655609057e1; coef2[2] = -5.739328757388;
     coef2[3] = 1.563154982022; coef2[4] = -2.877056004391e-1; coef2[5] = 3.482559773737e-2;
