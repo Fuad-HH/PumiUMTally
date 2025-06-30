@@ -63,7 +63,7 @@ public:
   KOKKOS_FUNCTION
   void sample_collision_distance(ParticleInfo &particle_info,
                                  const FieldInfo &field_info) const {
-    using namespace std::numbers
+    using namespace std::numbers;
 	// example of sampling a random number
     auto rand_gen = random_pool.get_state();
     double x = rand_gen.drand(0., 1.);
