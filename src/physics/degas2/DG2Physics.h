@@ -80,7 +80,7 @@ public:
 
     double lnsigma_ion {0}; //cm^2
     for (int i=0; i<9; i++) {
-        lnsigma_ion += coef[i]*std::pow(std::log(field_info.electron_temperature),i);
+        lnsigma_ion += coef2[i]*std::pow(std::log(field_info.electron_temperature),i);
     }
     double sigma_ion {exp(lnsigma_ion)/sqrt(mag2)};
 
