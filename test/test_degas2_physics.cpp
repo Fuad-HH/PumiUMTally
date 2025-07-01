@@ -56,7 +56,7 @@ int main(int argc, char *argv[]) {
 
 	for (int i = 0; i < numParticles; ++i) {
 		outfile << "Particle #" << i << std::endl;
-		outfile << "Energy: " << output(i).energy_group << "Weight: " << output(i).weight << std::endl;
+		outfile << "Energy: " << output(i).energy_group << " Weight: " << output(i).weight << std::endl;
 		outfile << "Position: " << output(i).position[0] << ", " << output(i).position[1] << ", " << output(i).position[2] << std::endl;
 		outfile << "Direction: " << output(i).direction[0] << ", " << output(i).direction[1] << ", " << output(i).direction[2] << std::endl;
 		outfile << std::endl;
