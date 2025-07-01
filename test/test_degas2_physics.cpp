@@ -53,14 +53,14 @@ int main(int argc, char *argv[]) {
           physics.sample_collision_distance(particles(i), fields(i));
         });
   }
-  while (int n = 0; n<numParticles, n++) {
+  for (int n = 0; n<numParticles; n++) {
   	std::ofstream outfile("Log.txt");
 
 	outfile << "Particle #" << n << std::endl;
 	outfile << "Energy: " << particles(n).energy_group << ", Weight: " << particles(n).weight << std::endl;
 	outfile << "Position: " << particles(n).position[0] << ", " << particles(n).position[1] << ", " << particles(n).position[2] << std::endl;
 	outfile << "Direction: " << particles(n).direction[0] << ", " << particles(n).direction[1] << ", " << particles(n).direction[2] << std::endl;
-    outfile << endl;
+    outfile << std::endl;
   }
   Kokkos::finalize();
   return 0;
