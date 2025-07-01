@@ -7,6 +7,7 @@
 
 #include "DG2Physics.h"
 #include <Kokkos_Core.hpp>
+#include <fstream>
 
 int main(int argc, char *argv[]) {
   Kokkos::initialize(argc, argv);
@@ -43,10 +44,23 @@ int main(int argc, char *argv[]) {
         });
 
     // Call the function to be tested
-    Kokkos::parallel_for(
+	Kokkos::parallel_for(
         "run physics", numParticles, KOKKOS_LAMBDA(int i) {
           physics.collide_particle(particles(i), fields(i));
         });
+    Kokkos::parallel_for(
+        "run physics", numParticles, KOKKOS_LAMBDA(int i) {
+          physics.sample_collision_distance(particles(i), fields(i));
+        });
+  }
+  while (int n = 0; n<numParticles, n++) {
+  	std::ofstream outfile("Log.txt");
+
+	outfile << "Particle #" << n << std::endl;
+	outfile << "Energy: " << particles(n).energy_group << ", Weight: " << particles(n).weight << std::endl;
+	outfile << "Position: " << particles(n).position[0] << ", " << particles(n).position[1] << ", " << particles(n).position[2] << std::endl;
+	outfile << "Direction: " << particles(n).direction[0] << ", " << particles(n).direction[1] << ", " << particles(n).direction[2] << std::endl;
+    outfile << endl;
   }
   Kokkos::finalize();
   return 0;
