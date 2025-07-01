@@ -7,6 +7,7 @@
 
 #include "DG2Physics.h"
 #include <Kokkos_Core.hpp>
+#include <fstream>
 
 
 int main(int argc, char *argv[]) {
@@ -46,22 +47,23 @@ int main(int argc, char *argv[]) {
     // Call the function to be tested
 	Kokkos::parallel_for(
         "run physics", numParticles, KOKKOS_LAMBDA(int i) {
-          physics.collide_particle(particles(i), fields(i));
-		  physics.sample_collision_distance(particles(i), fields(i));
-
-		  printf("Particle #: %i\n", i);
-		  printf("Energy: %i\n", particles(i).energy_group);
-		  printf("Weight: %f\n", particles(i).weight);
-		  printf("Particle Position: (%f, ", particles(i).position[0]);
-		  printf("Particle Position: %f, ", particles(i).position[1]);
-		  printf("Particle Position: %f)\n", particles(i).position[2]);
-		  printf("Particle Direction: (%f, ", particles(i).direction[0]);
-		  printf("Particle Direction: %f, ", particles(i).direction[1]);
-		  printf("Particle Direction: %f)\n", particles(i).direction[2]);
-		  printf("\n");
+          physics.sample_collision_distance(particles(i), fields(i));
+		  physics.collide_particle(particles(i), fields(i));
         });
-  }
+	auto output = create_mirror_view(particles);
 
+	for (int i = 0; i < numParticles; ++i) {
+		std::ofstream outfile("Log.txt");
+
+		outfile << "Particle #" << i << std::endl;
+		outfile << "Energy: " << output(i).energy_group << "Weight: " << output(i).weight << std::endl;
+		outfile << "Position: " << output(i).position[0] << ", " << output(i).position[1] << ", " << output(i).position[2] << std::endl;
+		outfile << "Direction: " << output(i).direction[0] << ", " << output(i).direction[1] << ", " << output(i).direction[2] << std::endl;
+		outfile << std::endl;
+	}
+
+
+  }
   Kokkos::finalize();
   return 0;
 }
