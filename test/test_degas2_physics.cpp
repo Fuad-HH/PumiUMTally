@@ -34,13 +34,13 @@ int main(int argc, char *argv[]) {
           particles(i).direction[0] = 1;
           particles(i).direction[1] = 0;
           particles(i).direction[2] = 0;
-          particles(i).energy_group = 1;
+          particles(i).energy_group = 3;
           particles(i).weight = 1.0;
 
-          fields(i).electron_density = 1.0;
-          fields(i).ion_density = 1.0;
-          fields(i).electron_temperature = 1.0;
-          fields(i).ion_temperature = 1.0;
+          fields(i).electron_density = 1.0e18;
+          fields(i).ion_density = 1.0e18;
+          fields(i).electron_temperature = 1000.0;
+          fields(i).ion_temperature = 1000.0;
           // and others like this
         });
 
