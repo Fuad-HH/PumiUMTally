@@ -7,7 +7,7 @@
 
 #include "DG2Physics.h"
 #include <Kokkos_Core.hpp>
-#include <fstream>
+
 
 int main(int argc, char *argv[]) {
   Kokkos::initialize(argc, argv);
@@ -53,14 +53,17 @@ int main(int argc, char *argv[]) {
           physics.sample_collision_distance(particles(i), fields(i));
         });
 	for (int n = 0; n < numParticles; n++) {
-  	std::ofstream outfile("Log.txt");
-
-	outfile << "Particle #" << n << std::endl;
-	outfile << "Energy: " << particles(n).energy_group << ", Weight: " << particles(n).weight << std::endl;
-	outfile << "Position: " << particles(n).position[0] << ", " << particles(n).position[1] << ", " << particles(n).position[2] << std::endl;
-	outfile << "Direction: " << particles(n).direction[0] << ", " << particles(n).direction[1] << ", " << particles(n).direction[2] << std::endl;
-    outfile << std::endl;
-    }
+		printf("Particle #: %i\n", n);
+		printf("Energy: %i\n", particles(n).energy_group);
+		printf("Weight: %f\n", particles(n).weight);
+		printf("Particle Position: (%f, ", particles(n).position[0]);
+		printf("Particle Position: %f, ", particles(n).position[1]);
+		printf("Particle Position: %f)\n", particles(n).position[2]);
+		printf("Particle Direction: (%f, ", particles(n).direction[0]);
+		printf("Particle Direction: %f, ", particles(n).direction[1]);
+		printf("Particle Direction: %f)\n", particles(n).direction[2]);
+		printf("\n");
+	}
   }
 
   Kokkos::finalize();
