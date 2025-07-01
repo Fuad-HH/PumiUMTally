@@ -47,23 +47,19 @@ int main(int argc, char *argv[]) {
 	Kokkos::parallel_for(
         "run physics", numParticles, KOKKOS_LAMBDA(int i) {
           physics.collide_particle(particles(i), fields(i));
+		  physics.sample_collision_distance(particles(i), fields(i));
+
+		  printf("Particle #: %i\n", i);
+		  printf("Energy: %i\n", particles(i).energy_group);
+		  printf("Weight: %f\n", particles(i).weight);
+		  printf("Particle Position: (%f, ", particles(i).position[0]);
+		  printf("Particle Position: %f, ", particles(i).position[1]);
+		  printf("Particle Position: %f)\n", particles(i).position[2]);
+		  printf("Particle Direction: (%f, ", particles(i).direction[0]);
+		  printf("Particle Direction: %f, ", particles(i).direction[1]);
+		  printf("Particle Direction: %f)\n", particles(i).direction[2]);
+		  printf("\n");
         });
-    Kokkos::parallel_for(
-        "run physics", numParticles, KOKKOS_LAMBDA(int i) {
-          physics.sample_collision_distance(particles(i), fields(i));
-        });
-	for (int n = 0; n < numParticles; n++) {
-		printf("Particle #: %i\n", n);
-		printf("Energy: %i\n", particles(n).energy_group);
-		printf("Weight: %f\n", particles(n).weight);
-		printf("Particle Position: (%f, ", particles(n).position[0]);
-		printf("Particle Position: %f, ", particles(n).position[1]);
-		printf("Particle Position: %f)\n", particles(n).position[2]);
-		printf("Particle Direction: (%f, ", particles(n).direction[0]);
-		printf("Particle Direction: %f, ", particles(n).direction[1]);
-		printf("Particle Direction: %f)\n", particles(n).direction[2]);
-		printf("\n");
-	}
   }
 
   Kokkos::finalize();
