@@ -51,10 +51,10 @@ int main(int argc, char *argv[]) {
 		  physics.collide_particle(particles(i), fields(i));
         });
 	auto output = create_mirror_view(particles);
+	Kokkos::deep_copy(output, particles);
+	std::ofstream outfile("Log.txt");
 
 	for (int i = 0; i < numParticles; ++i) {
-		std::ofstream outfile("Log.txt");
-
 		outfile << "Particle #" << i << std::endl;
 		outfile << "Energy: " << output(i).energy_group << "Weight: " << output(i).weight << std::endl;
 		outfile << "Position: " << output(i).position[0] << ", " << output(i).position[1] << ", " << output(i).position[2] << std::endl;
