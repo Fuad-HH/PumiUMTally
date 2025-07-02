@@ -31,10 +31,10 @@ int main(int argc, char *argv[]) {
           particles(i).position[0] = 0;
           particles(i).position[1] = 0;
           particles(i).position[2] = 0;
-          particles(i).direction[0] = 1;
+          particles(i).direction[0] = 1.0;
           particles(i).direction[1] = 0;
           particles(i).direction[2] = 0;
-          particles(i).energy_group = 3;
+          particles(i).energy_group = 3.0;
           particles(i).weight = 1.0;
 
           fields(i).electron_density = 1.0e18;
@@ -55,11 +55,16 @@ int main(int argc, char *argv[]) {
 	std::ofstream outfile("Log.txt");
 
 	for (int i = 0; i < numParticles; ++i) {
-		outfile << "Particle #" << i << std::endl;
-		outfile << "Energy: " << output(i).energy_group << " Weight: " << output(i).weight << std::endl;
-		outfile << "Position: " << output(i).position[0] << ", " << output(i).position[1] << ", " << output(i).position[2] << std::endl;
-		outfile << "Direction: " << output(i).direction[0] << ", " << output(i).direction[1] << ", " << output(i).direction[2] << std::endl;
-		outfile << std::endl;
+		outfile << "Particle #,Energy(eV),Weight,X(cm),Y(cm),Z(cm),X_Dir,Y_Dir,Z_Dir" << std::endl;
+		outfile << i << ",";
+		outfile << output(i).energy_group << ",";
+		outfile << output(i).weight << ",";
+		outfile << output(i).position[0] << ",";
+		outfile << output(i).position[1] << ",";
+		outfile << output(i).position[2] << ",";
+		outfile << output(i).direction[0] << ",";
+		outfile << output(i).direction[1] << ",";
+		outfile << output(i).direction[2] << std::endl;
 	}
 
 
