@@ -37,6 +37,7 @@ public:
     // Initialize particle velocities
     particle_velocities =
         Kokkos::View<double *[3]>("particle_velocities", num_particles);
+	//cross_sections = Kokkos::View<double *[2]>("cross_sections", num_particles);
   }
 
   DG2Physics(const DG2CrossSection cross_section, const int num_particles,
@@ -46,6 +47,7 @@ public:
     // Initialize particle velocities
     particle_velocities =
         Kokkos::View<double *[3]>("particle_velocities", num_particles);
+	//cross_sections = Kokkos::View<double *[2]>("cross_sections", num_particles);
   }
   //From Here
   // sample a new distance and update the particle's position but does not
@@ -70,7 +72,7 @@ public:
 
 	//Compute Ionization Cross Section
     double mp {938.27e6/(3e10*3e10)}; //eV/c^2 = eV*s^2/cm^2
-    double mag2 {2*particle_info.energy_group/mp}; //cm^2/s^2
+    double particle_velocity_squared {2*particle_info.energy_group/mp}; //cm^2/s^2
 
     double coef2 [9];
 
@@ -78,11 +80,11 @@ public:
     coef2[3] = 1.563154982022; coef2[4] = -2.877056004391e-1; coef2[5] = 3.482559773737e-2;
     coef2[6] = -2.631976175590e-3; coef2[7] = 1.119543953861e-4; coef2[8] = -2.039149852002e-6;
 
-    double lnsigma_ion {0}; //cm^2
+    double lnrate_ion {0}; //cm^2
     for (int i=0; i<9; i++) {
-        lnsigma_ion += coef2[i]*std::pow(logf(field_info.electron_temperature),i);
+        lnrate_ion += coef2[i]*std::pow(logf(field_info.electron_temperature),i);
     }
-    double sigma_ion {exp(lnsigma_ion)/sqrt(mag2)};
+    double sigma_ion {exp(lnrate_ion)/sqrt(particle_velocity_squared)};
 
 	//Compute Charge Exchange Cross Section
     double coef [9][9]; //E index, T index
@@ -123,13 +125,13 @@ public:
     coef[8][3] = -2.911233951880e-9; coef[8][4] = 5.117133050290e-9; coef[8][5] = -1.130988250912e-9;
     coef[8][6] = 1.005189187279e-10; coef[8][7] = -3.989884105603e-12; coef[8][8] = 6.388219930167e-14;
 
-    double lnalpha {0};
+    double lnrate_cx {0};
     for (int i = 0; i < 9; i++) {
         for (int j = 0; j < 9; j++) {
-            lnalpha += coef[i][j]*std::pow(logf(particle_info.energy_group),i)*std::pow(logf(field_info.ion_temperature),j);
+            lnrate_cx += coef[i][j]*std::pow(logf(particle_info.energy_group),i)*std::pow(logf(field_info.ion_temperature),j);
         }
     }
-    double sigma_cx = std::exp(lnalpha)/sqrt(mag2);
+    double sigma_cx = std::exp(lnrate_cx)/sqrt(particle_velocity_squared);
 
 	//Generate distance and move particle
     double l =-logf(x)/(field_info.electron_density*sigma_ion+field_info.ion_density*sigma_cx); //cm. n in cm^-3
@@ -154,7 +156,7 @@ public:
 
 	//Compute Ionization Cross Section
     double mp {938.27e6/(3e10*3e10)}; //eV/c^2 = eV*s^2/cm^2
-    double mag2 {2*particle_info.energy_group/mp}; //cm^2/s^2
+    double particle_velocity_squared {2*particle_info.energy_group/mp}; //cm^2/s^2
 
     double coef2[9];
 
@@ -162,11 +164,11 @@ public:
     coef2[3] = 1.563154982022; coef2[4] = -2.877056004391e-1; coef2[5] = 3.482559773737e-2;
     coef2[6] = -2.631976175590e-3; coef2[7] = 1.119543953861e-4; coef2[8] = -2.039149852002e-6;
 
-    double lnsigma_ion {0}; //cm^2
+    double lnrate_ion {0}; //cm^2
     for (int i=0; i<9; i++) {
-        lnsigma_ion += coef2[i]*std::pow(logf(field_info.electron_temperature),i);
+        lnrate_ion += coef2[i]*std::pow(logf(field_info.electron_temperature),i);
     }
-    double sigma_ion {exp(lnsigma_ion)/sqrt(mag2)};
+    double sigma_ion {exp(lnrate_ion)/sqrt(particle_velocity_squared)};
 
 	//Compute Charge Exchange Cross Section
     double coef [9][9]; //E index, T index
@@ -207,28 +209,28 @@ public:
     coef[8][3] = -2.911233951880e-9; coef[8][4] = 5.117133050290e-9; coef[8][5] = -1.130988250912e-9;
     coef[8][6] = 1.005189187279e-10; coef[8][7] = -3.989884105603e-12; coef[8][8] = 6.388219930167e-14;
 
-    double lnalpha {0};
+    double lnrate_cx {0};
     for (int i = 0; i < 9; i++) {
         for (int j = 0; j < 9; j++) {
-            lnalpha += coef[i][j]*std::pow(logf(particle_info.energy_group),i)*std::pow(logf(field_info.ion_temperature),j);
+            lnrate_cx += coef[i][j]*std::pow(logf(particle_info.energy_group),i)*std::pow(logf(field_info.ion_temperature),j);
         }
     }
-    double sigma_cx = std::exp(lnalpha)/sqrt(mag2);
+    double sigma_cx = std::exp(lnrate_cx)/sqrt(particle_velocity_squared);
 
 	//Compute New Direction and Energy and set particle info
 	//Compute 3 Maxwellian (Gaussian) distributed velocities (cm/s)
 
-	auto ux = std::sqrt(field_info.ion_temperature/mp)*std::sqrt(-2 * logf(x1))*cos(2*M_PI*x2);
-    auto uy = std::sqrt(field_info.ion_temperature/mp)*std::sqrt(-2 * logf(x1))*sin(2*M_PI*x2);
-	auto uz = std::sqrt(field_info.ion_temperature/mp)*std::sqrt(-2 * logf(y1))*sin(2*M_PI*y2);
+	auto vx = std::sqrt(field_info.ion_temperature/mp)*std::sqrt(-2 * logf(x1))*cos(2*M_PI*x2);
+    auto vy = std::sqrt(field_info.ion_temperature/mp)*std::sqrt(-2 * logf(x1))*sin(2*M_PI*x2);
+	auto vz = std::sqrt(field_info.ion_temperature/mp)*std::sqrt(-2 * logf(y1))*sin(2*M_PI*y2);
 
-	auto mag_u = std::sqrt(ux*ux + uy*uy + uz*uz);
+	auto mag_v = std::sqrt(vx*vx + vy*vy + vz*vz);
 
-	particle_info.direction[0] = ux/mag_u;
-	particle_info.direction[1] = uy/mag_u;
-	particle_info.direction[2] = uz/mag_u;
+	particle_info.direction[0] = vx/mag_v;
+	particle_info.direction[1] = vy/mag_v;
+	particle_info.direction[2] = vz/mag_v;
 
-	particle_info.energy_group = 0.5*mp*mag_u*mag_u;
+	particle_info.energy_group = 0.5*mp*mag_v*mag_v;
 
 	//Adjust Weights
 	double new_weight = particle_info.weight*(1-
