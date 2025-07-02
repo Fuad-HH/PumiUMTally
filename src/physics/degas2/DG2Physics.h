@@ -18,7 +18,7 @@ struct ParticleInfo {
   double position[3];  // Position in space (x, y, z)
   double direction[3]; // Direction vector (unit vector)
   double weight;
-  int energy_group; // Energy group *index*
+  double energy_group; // Energy group *index*
 };
 
 struct FieldInfo {
