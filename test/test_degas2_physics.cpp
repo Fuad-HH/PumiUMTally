@@ -53,9 +53,9 @@ int main(int argc, char *argv[]) {
 	auto output = create_mirror_view(particles);
 	Kokkos::deep_copy(output, particles);
 	std::ofstream outfile("Log.txt");
+	outfile << "Particle #,Energy(eV),Weight,X(cm),Y(cm),Z(cm),X_Dir,Y_Dir,Z_Dir" << std::endl;
 
 	for (int i = 0; i < numParticles; ++i) {
-		outfile << "Particle #,Energy(eV),Weight,X(cm),Y(cm),Z(cm),X_Dir,Y_Dir,Z_Dir" << std::endl;
 		outfile << i << ",";
 		outfile << output(i).energy_group << ",";
 		outfile << output(i).weight << ",";
