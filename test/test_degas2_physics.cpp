@@ -14,7 +14,7 @@ int main(int argc, char *argv[]) {
   Kokkos::initialize(argc, argv);
 
   {
-    int numParticles = 10;
+    int numParticles = 1000;
 
     Kokkos::View<Omega_h::Real ***> sigma_t_;            // mat, T, g
     Kokkos::View<Omega_h::Real ***> sigma_a_;            // mat, T, g
