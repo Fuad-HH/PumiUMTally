@@ -37,8 +37,8 @@ int main(int argc, char *argv[]) {
           particles(i).energy_group = 3.0;
           particles(i).weight = 1.0;
 
-          fields(i).electron_density = 1.0e18;
-          fields(i).ion_density = 1.0e18;
+          fields(i).electron_density = 1.0e13;
+          fields(i).ion_density = 1.0e13;
           fields(i).electron_temperature = 1000.0;
           fields(i).ion_temperature = 1000.0;
           // and others like this
