@@ -35,7 +35,7 @@ public:
   DG2Physics(const std::string &cross_section_file, const int num_particles,
              const int seed = SEED)
       : random_pool(seed), cross_section(cross_section_file) {
-    // Initialize particle velocities
+    // Initialize particle energy
     particle_energy =
         Kokkos::View<double *>("particle_energy", num_particles);
 	//cross_sections = Kokkos::View<double *[2]>("cross_sections", num_particles);
@@ -45,7 +45,7 @@ public:
              const int seed = SEED)
 
       : random_pool(seed), cross_section(cross_section) {
-    // Initialize particle velocities
+    // Initialize particle energy
     particle_energy =
         Kokkos::View<double *>("particle_energy", num_particles);
 	//cross_sections = Kokkos::View<double *[2]>("cross_sections", num_particles);
@@ -180,7 +180,7 @@ public:
 	particle_info.direction[2] = vz/mag_v;
 
 	particle_energy(particle_info.particle_index) = 0.5*mp*mag_v*mag_v;
-
+	particle_info.energy_group = particle_energy(particle_info.particle_index);
 	//Adjust Weights
 	double new_weight = particle_info.weight*(1-
         (field_info.electron_density*sigma_ion)/
