@@ -52,7 +52,7 @@ public:
   }
 
   KOKKOS_FUNCTION
-  double ionization_cross_section(const double energy, const double e_temperature){
+  double ionization_cross_section(double energy, double e_temperature){
 	double mp {938.27e6/(3e10*3e10)}; //eV/c^2 = eV*s^2/cm^2
     double particle_velocity_squared {2*energy/mp}; //cm^2/s^2
 
@@ -71,7 +71,7 @@ public:
   }
 
   KOKKOS_FUNCTION
-  double charge_exchange_cross_section(const double energy, const double ion_temperature){
+  double charge_exchange_cross_section(double energy, double ion_temperature){
 	double mp {938.27e6/(3e10*3e10)}; //eV/c^2 = eV*s^2/cm^2
     double particle_velocity_squared {2*energy/mp}; //cm^2/s^2
 
