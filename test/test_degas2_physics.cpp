@@ -36,6 +36,7 @@ int main(int argc, char *argv[]) {
           particles(i).direction[2] = 0;
           particles(i).energy_group = 3.0;
           particles(i).weight = 1.0;
+		  particles(i).particle_index = i;
 
           fields(i).electron_density = 1.0e13;
           fields(i).ion_density = 1.0e13;

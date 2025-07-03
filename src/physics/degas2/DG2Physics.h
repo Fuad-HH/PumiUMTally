@@ -19,6 +19,7 @@ struct ParticleInfo {
   double direction[3]; // Direction vector (unit vector)
   double weight;
   double energy_group; // Energy group *index*
+  int particle_index;
 };
 
 struct FieldInfo {
@@ -35,8 +36,8 @@ public:
              const int seed = SEED)
       : random_pool(seed), cross_section(cross_section_file) {
     // Initialize particle velocities
-    particle_velocities =
-        Kokkos::View<double *[3]>("particle_velocities", num_particles);
+    particle_energy =
+        Kokkos::View<double *>("particle_energy", num_particles);
 	//cross_sections = Kokkos::View<double *[2]>("cross_sections", num_particles);
   }
 
@@ -45,35 +46,17 @@ public:
 
       : random_pool(seed), cross_section(cross_section) {
     // Initialize particle velocities
-    particle_velocities =
-        Kokkos::View<double *[3]>("particle_velocities", num_particles);
+    particle_energy =
+        Kokkos::View<double *>("particle_energy", num_particles);
 	//cross_sections = Kokkos::View<double *[2]>("cross_sections", num_particles);
   }
-  //From Here
-  // sample a new distance and update the particle's position but does not
-  // change direction
-  /*
-  //Functions to evaluate the cross sections. Need to talk to Fuad
-  //For now I'll put them in the functions
-  KOKKOS_FUNCTION
-  double ionization_cross_section(ParticleInfo &particle_info,
-                                 const FieldInfo &field_info){
-
-  }
-  */
 
   KOKKOS_FUNCTION
-  void sample_collision_distance(ParticleInfo &particle_info,
-                                 const FieldInfo &field_info) const {
-	// example of sampling a random number
-    auto rand_gen = random_pool.get_state();
-    double x = rand_gen.drand(0., 1.);
-    random_pool.free_state(rand_gen);
+  double ionization_cross_section(const double energy, const double e_temperature){
+	double mp {938.27e6/(3e10*3e10)}; //eV/c^2 = eV*s^2/cm^2
+    double particle_velocity_squared {2*energy/mp}; //cm^2/s^2
 
 	//Compute Ionization Cross Section
-    double mp {938.27e6/(3e10*3e10)}; //eV/c^2 = eV*s^2/cm^2
-    double particle_velocity_squared {2*particle_info.energy_group/mp}; //cm^2/s^2
-
     double coef2 [9];
 
     coef2[0] = -3.271396786375e1; coef2[1] = 1.353655609057e1; coef2[2] = -5.739328757388;
@@ -82,11 +65,17 @@ public:
 
     double lnrate_ion {0}; //cm^2
     for (int i=0; i<9; i++) {
-        lnrate_ion += coef2[i]*std::pow(logf(field_info.electron_temperature),i);
+        lnrate_ion += coef2[i]*std::pow(logf(e_temperature),i);
     }
-    sigma_ion = exp(lnrate_ion)/sqrt(particle_velocity_squared);
+    return exp(lnrate_ion)/sqrt(particle_velocity_squared);
+  }
 
-	//Compute Charge Exchange Cross Section
+  KOKKOS_FUNCTION
+  double charge_exchange_cross_section(const double energy, const double ion_temperature){
+	double mp {938.27e6/(3e10*3e10)}; //eV/c^2 = eV*s^2/cm^2
+    double particle_velocity_squared {2*energy/mp}; //cm^2/s^2
+
+    //Compute Charge Exchange Cross Section
     double coef [9][9]; //E index, T index
 
     coef[0][0] = -1.829079581680e1; coef[0][1] = 2.169137615703e-1; coef[0][2] = 4.307131243894e-2;
@@ -128,10 +117,25 @@ public:
     double lnrate_cx {0};
     for (int i = 0; i < 9; i++) {
         for (int j = 0; j < 9; j++) {
-            lnrate_cx += coef[i][j]*std::pow(logf(particle_info.energy_group),i)*std::pow(logf(field_info.ion_temperature),j);
+            lnrate_cx += coef[i][j]*std::pow(logf(energy),i)*std::pow(logf(ion_temperature),j);
         }
     }
-    sigma_cx = std::exp(lnrate_cx)/sqrt(particle_velocity_squared);
+    return std::exp(lnrate_cx)/sqrt(particle_velocity_squared);
+  }
+
+
+  KOKKOS_FUNCTION
+  void sample_collision_distance(ParticleInfo &particle_info,
+                                 const FieldInfo &field_info) const {
+	// example of sampling a random number
+    auto rand_gen = random_pool.get_state();
+    double x = rand_gen.drand(0., 1.);
+    random_pool.free_state(rand_gen);
+
+	double energy = particle_energy(particle_info.particle_index);
+
+	double sigma_ion = ionization_cross_section(energy, field_info.electron_temperature);
+	double sigma_cx = charge_exchange_cross_section(energy, field_info.ion_temperature);
 
 	//Generate distance and move particle
     double l =-logf(x)/(field_info.electron_density*sigma_ion+field_info.ion_density*sigma_cx); //cm. n in cm^-3
@@ -154,11 +158,14 @@ public:
 	double ww = rand_gen.drand(0., 1.);
     random_pool.free_state(rand_gen);
 
-	//Compute Ionization Cross Section
-    double mp {938.27e6/(3e10*3e10)}; //eV/c^2 = eV*s^2/cm^2
+	double energy = particle_energy(particle_info.particle_index);
+
+	double sigma_ion = ionization_cross_section(energy, field_info.electron_temperature);
+	double sigma_cx = charge_exchange_cross_section(energy, field_info.ion_temperature);
 
 	//Compute New Direction and Energy and set particle info
 	//Compute 3 Maxwellian (Gaussian) distributed velocities (cm/s)
+	 double mp {938.27e6/(3e10*3e10)}; //eV/c^2 = eV*s^2/cm^2
 
 	auto vx = std::sqrt(field_info.ion_temperature/mp)*std::sqrt(-2 * logf(x1))*cos(2*M_PI*x2);
     auto vy = std::sqrt(field_info.ion_temperature/mp)*std::sqrt(-2 * logf(x1))*sin(2*M_PI*x2);
@@ -170,7 +177,7 @@ public:
 	particle_info.direction[1] = vy/mag_v;
 	particle_info.direction[2] = vz/mag_v;
 
-	particle_info.energy_group = 0.5*mp*mag_v*mag_v;
+	particle_energy(particle_info.particle_index) = 0.5*mp*mag_v*mag_v;
 
 	//Adjust Weights
 	double new_weight = particle_info.weight*(1-
@@ -195,7 +202,7 @@ public:
   random_pool_t random_pool;
   DG2CrossSection cross_section;
 
-  Kokkos::View<double *[3]> particle_velocities;
+  Kokkos::View<double *> particle_energy;
 
 };
 #endif // PUMITALLYOPENMC_DG2PHYSICS_H
