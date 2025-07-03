@@ -50,7 +50,7 @@ public:
     // Initialize particle velocities
     particle_velocities =
         Kokkos::View<double *[3]>("particle_velocities", num_particles);
-	igma_cx = 1.0;
+	sigma_cx = 1.0;
 	sigma_ion = 1.0;
 	//cross_sections = Kokkos::View<double *[2]>("cross_sections", num_particles);
   }
