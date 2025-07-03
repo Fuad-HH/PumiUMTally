@@ -52,7 +52,7 @@ public:
   }
 
   KOKKOS_FUNCTION
-  double ionization_cross_section(double energy, double e_temperature){
+  double ionization_cross_section(const double energy, const double e_temperature){
 	double mp {938.27e6/(3e10*3e10)}; //eV/c^2 = eV*s^2/cm^2
     double particle_velocity_squared {2*energy/mp}; //cm^2/s^2
 
@@ -71,7 +71,7 @@ public:
   }
 
   KOKKOS_FUNCTION
-  double charge_exchange_cross_section(double energy, double ion_temperature){
+  double charge_exchange_cross_section(const double energy, const double ion_temperature){
 	double mp {938.27e6/(3e10*3e10)}; //eV/c^2 = eV*s^2/cm^2
     double particle_velocity_squared {2*energy/mp}; //cm^2/s^2
 
@@ -134,8 +134,8 @@ public:
 
 	double energy = particle_energy(particle_info.particle_index);
 
-	double sigma_ion = ionization_cross_section(energy, field_info.electron_temperature);
-	double sigma_cx = charge_exchange_cross_section(energy, field_info.ion_temperature);
+	auto sigma_ion = ionization_cross_section(energy, field_info.electron_temperature);
+	auto sigma_cx = charge_exchange_cross_section(energy, field_info.ion_temperature);
 
 	//Generate distance and move particle
     double l =-logf(x)/(field_info.electron_density*sigma_ion+field_info.ion_density*sigma_cx); //cm. n in cm^-3
@@ -160,8 +160,8 @@ public:
 
 	double energy = particle_energy(particle_info.particle_index);
 
-	double sigma_ion = ionization_cross_section(energy, field_info.electron_temperature);
-	double sigma_cx = charge_exchange_cross_section(energy, field_info.ion_temperature);
+	auto sigma_ion = ionization_cross_section(energy, field_info.electron_temperature);
+	auto sigma_cx = charge_exchange_cross_section(energy, field_info.ion_temperature);
 
 	//Compute New Direction and Energy and set particle info
 	//Compute 3 Maxwellian (Gaussian) distributed velocities (cm/s)
