@@ -122,6 +122,7 @@ public:
         }
     }
     double sigma_cx = std::exp(lnrate_cx)/sqrt(particle_velocity_squared);
+	particle_info.weight = sigma_cx;//DELETE THIS
 	return sigma_cx;
   }
 
@@ -198,8 +199,8 @@ public:
             new_weight = ws;
         }
     }
-	particle_info.weight = new_weight;
-	particle_info.weight = sigma_cx;//DELETE THIS
+	//particle_info.weight = new_weight;
+
 }
 //To here
   random_pool_t random_pool;
