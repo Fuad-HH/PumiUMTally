@@ -136,8 +136,8 @@ public:
 
 	double energy = particle_energy(particle_info.particle_index);
 
-	auto sigma_ion = ionization_cross_section(energy, field_info.electron_temperature);
-	auto sigma_cx = charge_exchange_cross_section(energy, field_info.ion_temperature);
+	double sigma_ion = ionization_cross_section(energy, field_info.electron_temperature);
+	double sigma_cx = charge_exchange_cross_section(energy, field_info.ion_temperature);
 
 	//Generate distance and move particle
     double l =-logf(x)/(field_info.electron_density*sigma_ion+field_info.ion_density*sigma_cx); //cm. n in cm^-3
@@ -162,8 +162,8 @@ public:
 
 	double energy = particle_energy(particle_info.particle_index);
 
-	auto sigma_ion = ionization_cross_section(energy, field_info.electron_temperature);
-	auto sigma_cx = charge_exchange_cross_section(energy, field_info.ion_temperature);
+	double sigma_ion = ionization_cross_section(energy, field_info.electron_temperature);
+	double sigma_cx = charge_exchange_cross_section(energy, field_info.ion_temperature);
 
 	//Compute New Direction and Energy and set particle info
 	//Compute 3 Maxwellian (Gaussian) distributed velocities (cm/s)
