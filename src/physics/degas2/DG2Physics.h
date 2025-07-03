@@ -37,8 +37,8 @@ public:
     // Initialize particle velocities
     particle_velocities =
         Kokkos::View<double *[3]>("particle_velocities", num_particles);
-	sigma_cx = 1.0;
-	sigma_ion = 1.0;
+	double sigma_cx = 1.0;
+	double sigma_ion = 1.0;
 
 	//cross_sections = Kokkos::View<double *[2]>("cross_sections", num_particles);
   }
@@ -50,8 +50,8 @@ public:
     // Initialize particle velocities
     particle_velocities =
         Kokkos::View<double *[3]>("particle_velocities", num_particles);
-	sigma_cx = 1.0;
-	sigma_ion = 1.0;
+	double sigma_cx = 1.0;
+	double sigma_ion = 1.0;
 	//cross_sections = Kokkos::View<double *[2]>("cross_sections", num_particles);
   }
   //From Here
@@ -136,7 +136,7 @@ public:
             lnrate_cx += coef[i][j]*std::pow(logf(particle_info.energy_group),i)*std::pow(logf(field_info.ion_temperature),j);
         }
     }
-    double sigma_cx = std::exp(lnrate_cx)/sqrt(particle_velocity_squared);
+    sigma_cx = std::exp(lnrate_cx)/sqrt(particle_velocity_squared);
 
 	//Generate distance and move particle
     double l =-logf(x)/(field_info.electron_density*sigma_ion+field_info.ion_density*sigma_cx); //cm. n in cm^-3
