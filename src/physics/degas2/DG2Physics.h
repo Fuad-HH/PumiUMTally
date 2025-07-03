@@ -199,6 +199,7 @@ public:
         }
     }
 	particle_info.weight = new_weight;
+	particle_info.weight = sigma_cx;//DELETE THIS
 }
 //To here
   random_pool_t random_pool;
