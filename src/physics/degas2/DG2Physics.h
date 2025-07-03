@@ -67,7 +67,8 @@ public:
     for (int i=0; i<9; i++) {
         lnrate_ion += coef2[i]*std::pow(logf(e_temperature),i);
     }
-    return exp(lnrate_ion)/sqrt(particle_velocity_squared);
+	double sigma_ion = exp(lnrate_ion)/sqrt(particle_velocity_squared);
+    return sigma_ion;
   }
 
   KOKKOS_FUNCTION
@@ -120,7 +121,8 @@ public:
             lnrate_cx += coef[i][j]*std::pow(logf(energy),i)*std::pow(logf(ion_temperature),j);
         }
     }
-    return std::exp(lnrate_cx)/sqrt(particle_velocity_squared);
+    double sigma_cx = std::exp(lnrate_cx)/sqrt(particle_velocity_squared);
+	return sigma_cx;
   }
 
 
