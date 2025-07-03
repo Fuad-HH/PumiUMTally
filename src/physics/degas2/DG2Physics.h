@@ -66,6 +66,8 @@ public:
 
   }
   */
+  double sigma_cx;
+  double sigma_ion;
 
   KOKKOS_FUNCTION
   void sample_collision_distance(ParticleInfo &particle_info,
@@ -201,7 +203,6 @@ public:
   DG2CrossSection cross_section;
 
   Kokkos::View<double *[3]> particle_velocities;
-	double sigma_cx;
-	double sigma_ion;
+
 };
 #endif // PUMITALLYOPENMC_DG2PHYSICS_H
