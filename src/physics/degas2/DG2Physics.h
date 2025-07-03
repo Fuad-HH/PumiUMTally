@@ -162,8 +162,8 @@ public:
 
 	double energy = particle_energy(particle_info.particle_index);
 
-	auto sigma_ion = DG2Physics.ionization_cross_section(energy, field_info.electron_temperature);
-	auto sigma_cx = DG2Physics.charge_exchange_cross_section(energy, field_info.ion_temperature);
+	auto sigma_ion = DG2Physics::ionization_cross_section(energy, field_info.electron_temperature);
+	auto sigma_cx = DG2Physics::charge_exchange_cross_section(energy, field_info.ion_temperature);
 
 	//Compute New Direction and Energy and set particle info
 	//Compute 3 Maxwellian (Gaussian) distributed velocities (cm/s)
