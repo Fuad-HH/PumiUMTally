@@ -37,9 +37,6 @@ public:
     // Initialize particle velocities
     particle_velocities =
         Kokkos::View<double *[3]>("particle_velocities", num_particles);
-	//public double sigma_cx = 1.0;
-	//public double sigma_ion = 1.0;
-
 	//cross_sections = Kokkos::View<double *[2]>("cross_sections", num_particles);
   }
 
@@ -50,8 +47,6 @@ public:
     // Initialize particle velocities
     particle_velocities =
         Kokkos::View<double *[3]>("particle_velocities", num_particles);
-	//public double sigma_cx = 1.0;
-	//public double sigma_ion = 1.0;
 	//cross_sections = Kokkos::View<double *[2]>("cross_sections", num_particles);
   }
   //From Here
@@ -66,8 +61,6 @@ public:
 
   }
   */
-  public double sigma_cx;
-  public double sigma_ion;
 
   KOKKOS_FUNCTION
   void sample_collision_distance(ParticleInfo &particle_info,
