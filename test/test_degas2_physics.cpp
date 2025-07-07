@@ -112,6 +112,7 @@ TEST_CASE("Test Degas2 Physics Functions"){
   	REQUIRE_THAT(sdl, Catch::Matchers::WithinAbs(2.40,.03));
   	REQUIRE_THAT(ux, Catch::Matchers::WithinAbs(0.0,.03));
   	REQUIRE_THAT(sdux, Catch::Matchers::WithinAbs(0.577,.03));
+	REQUIRE_THAT(5.0, Catch::Matchers::WithinAbs(1.0,.03));
 
   }
   Kokkos::finalize();
