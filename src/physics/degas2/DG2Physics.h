@@ -52,7 +52,7 @@ public:
   }
 
   KOKKOS_FUNCTION
-  double ionization_cross_section(const FieldInfo &field_info) const{
+  double ionization_cross_section(ParticleInfo &particle_info, const FieldInfo &field_info) const{
 	double energy = particle_energy(particle_info.particle_index);
 	double mp {938.27e6/(3e10*3e10)}; //eV/c^2 = eV*s^2/cm^2
     double particle_velocity_squared {2*energy/mp}; //cm^2/s^2
@@ -73,7 +73,7 @@ public:
   }
 
   KOKKOS_FUNCTION
-  double charge_exchange_cross_section(const FieldInfo &field_info) const{
+  double charge_exchange_cross_section(ParticleInfo &particle_info, const FieldInfo &field_info) const{
 	double energy = particle_energy(particle_info.particle_index);
 	double mp {938.27e6/(3e10*3e10)}; //eV/c^2 = eV*s^2/cm^2
     double particle_velocity_squared {2*energy/mp}; //cm^2/s^2
@@ -136,8 +136,8 @@ public:
     double x = rand_gen.drand(0., 1.);
     random_pool.free_state(rand_gen);
 
-	double sigma_ion = ionization_cross_section(field_info);
-	double sigma_cx = charge_exchange_cross_section(field_info);
+	double sigma_ion = ionization_cross_section(particle_info, field_info);
+	double sigma_cx = charge_exchange_cross_section(particle_info, field_info);
 
 	//Generate distance and move particle
     double l =-Kokkos::log(x)/(field_info.electron_density*sigma_ion+field_info.ion_density*sigma_cx); //cm. n in cm^-3
@@ -160,8 +160,8 @@ public:
 	double ww = rand_gen.drand(0., 1.);
     random_pool.free_state(rand_gen);
 
-	double sigma_ion = ionization_cross_section(field_info);
-	double sigma_cx = charge_exchange_cross_section(field_info);
+	double sigma_ion = ionization_cross_section(particle_info, field_info);
+	double sigma_cx = charge_exchange_cross_section(particle_info, field_info);
 
 	//Compute New Direction and Energy and set particle info
 	//Compute 3 Maxwellian (Gaussian) distributed velocities (cm/s)
