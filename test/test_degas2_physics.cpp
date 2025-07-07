@@ -60,7 +60,30 @@ int main(int argc, char *argv[]) {
 		l += output(i).position[0];
 	}
 	l /= numParticles;
-	outfile << "Mean free path (cm): " << l << std::endl;
+	outfile << "Average Distance (cm): " << l << std::endl;
+
+	double varl {0};
+	for (int i; i < numParticles; ++i) {
+		varl += (output(i).position[0] - l)*(output(i).position[0] - l);
+	}
+	varl /= (numParticles - 1);
+	double sdl {sqrt(varl)};
+	outfile << "Standard Deviation of Distance (cm): " << sdl << std::endl;
+
+	double ux {0};
+	for (int i; i < numParticles; ++i) {
+		ux += output(i).direction[0];
+	}
+	ux /= numParticles;
+	outfile << "Mean x Direction: " << ux << std::endl;
+
+	double varux
+	for (int i; i < numParticles; ++i) {
+		varux += (output(i).direction[0] - ux)*(output(i).direction[0] - ux);
+	}
+	varux /= (numParticles - 1);
+	double sdux {sqrt(varux)};
+	outfile << "Standard Deviation of Mean x Direction: " << sdux << std::endl;
 
 
 	outfile << "Particle #,Energy(eV),Weight,X(cm),Y(cm),Z(cm),X_Dir,Y_Dir,Z_Dir" << std::endl;
