@@ -32,7 +32,7 @@ catch_discover_tests(test_pumi_tally_impl_methods)
 if(PUMI_ENABLE_DEGAS2)
     add_executable(test_degas2_physics test_degas2_physics.cpp)
     target_include_directories(test_degas2_physics PRIVATE ${PROJECT_SOURCE_DIR}/src/physics/degas2)
-    target_link_libraries(test_degas2_physics PUBLIC Catch2::Catch2 pumitally_degas2)
+    target_link_libraries(test_degas2_physics PUBLIC Catch2::Catch2WithMain pumitally_degas2)
     catch_discover_tests(test_degas2_physics DISCOVERY_MODE PRE_TEST)
 endif()
 #################### Test HostWrite ####################

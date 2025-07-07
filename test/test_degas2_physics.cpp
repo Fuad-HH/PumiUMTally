@@ -10,9 +10,8 @@
 #include <fstream>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
-
-int main(int argc, char *argv[]) {
-  Kokkos::initialize(argc, argv);
+TEST_CASE("Test Degas2 Physics Functions"){
+  Kokkos::initialize();
 
   {
     int numParticles = 1000;
@@ -117,5 +116,4 @@ int main(int argc, char *argv[]) {
   }
   Kokkos::finalize();
 
-  return 0;
 }
