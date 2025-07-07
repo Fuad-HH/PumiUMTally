@@ -65,9 +65,9 @@ public:
 
     double lnrate_ion {0}; //cm^2
     for (int i=0; i<9; i++) {
-        lnrate_ion += coef2[i]*std::pow(logf(e_temperature),i);
+        lnrate_ion += coef2[i]*Kokkos::pow(Kokkos::log(e_temperature),i);
     }
-	double sigma_ion = exp(lnrate_ion)/sqrt(particle_velocity_squared);
+	double sigma_ion = Kokkos::exp(lnrate_ion)/Kokkos::sqrt(particle_velocity_squared);
     return sigma_ion;
   }
 
@@ -118,10 +118,10 @@ public:
     double lnrate_cx {0};
     for (int i = 0; i < 9; i++) {
         for (int j = 0; j < 9; j++) {
-            lnrate_cx += coef[i][j]*std::pow(logf(energy),i)*std::pow(logf(ion_temperature),j);
+            lnrate_cx += coef[i][j]*Kokkos::pow(Kokkos::log(energy),i)*Kokkos::pow(Kokkos::log(ion_temperature),j);
         }
     }
-    double sigma_cx = std::exp(lnrate_cx)/sqrt(particle_velocity_squared);
+    double sigma_cx = Kokkos::exp(lnrate_cx)/Kokkos::sqrt(particle_velocity_squared);
 	return sigma_cx;
   }
 
@@ -140,7 +140,7 @@ public:
 	double sigma_cx = charge_exchange_cross_section(energy, field_info.ion_temperature);
 
 	//Generate distance and move particle
-    double l =-logf(x)/(field_info.electron_density*sigma_ion+field_info.ion_density*sigma_cx); //cm. n in cm^-3
+    double l =-Kokkos::log(x)/(field_info.electron_density*sigma_ion+field_info.ion_density*sigma_cx); //cm. n in cm^-3
     particle_info.position[0] += l*particle_info.direction[0];
     particle_info.position[1] += l*particle_info.direction[1];
     particle_info.position[2] += l*particle_info.direction[2];
@@ -169,18 +169,18 @@ public:
 	//Compute 3 Maxwellian (Gaussian) distributed velocities (cm/s)
 	 double mp {938.27e6/(3e10*3e10)}; //eV/c^2 = eV*s^2/cm^2
 
-	auto vx = std::sqrt(field_info.ion_temperature/mp)*std::sqrt(-2 * logf(x1))*cos(2*M_PI*x2);
-    auto vy = std::sqrt(field_info.ion_temperature/mp)*std::sqrt(-2 * logf(x1))*sin(2*M_PI*x2);
-	auto vz = std::sqrt(field_info.ion_temperature/mp)*std::sqrt(-2 * logf(y1))*sin(2*M_PI*y2);
+	auto vx = Kokkos::sqrt(field_info.ion_temperature/mp)*Kokkos::sqrt(-2 * Kokkos::log(x1))*Kokkos::cos(2*M_PI*x2);
+    auto vy = Kokkos::sqrt(field_info.ion_temperature/mp)*Kokkos::sqrt(-2 * Kokkos::log(x1))*Kokkos::sin(2*M_PI*x2);
+	auto vz = Kokkos::sqrt(field_info.ion_temperature/mp)*Kokkos::sqrt(-2 * Kokkos::log(y1))*Kokkos::sin(2*M_PI*y2);
 
-	auto mag_v = std::sqrt(vx*vx + vy*vy + vz*vz);
+	auto mag_v = Kokkos::sqrt(vx*vx + vy*vy + vz*vz);
 
 	particle_info.direction[0] = vx/mag_v;
 	particle_info.direction[1] = vy/mag_v;
 	particle_info.direction[2] = vz/mag_v;
 
 	particle_energy(particle_info.particle_index) = 0.5*mp*mag_v*mag_v;
-	particle_info.energy_group = particle_energy(particle_info.particle_index);
+	particle_info.energy_group = particle_energy(particle_info.particle_index); //Temporary for debugging
 	//Adjust Weights
 	double new_weight = particle_info.weight*(1-
         (field_info.electron_density*sigma_ion)/
