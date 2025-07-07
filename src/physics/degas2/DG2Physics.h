@@ -38,7 +38,6 @@ public:
     // Initialize particle energy
     particle_energy =
         Kokkos::View<double *>("particle_energy", num_particles);
-	particle_energy(particle_info.particle_index) = particle_info.energy_group;
 	//cross_sections = Kokkos::View<double *[2]>("cross_sections", num_particles);
   }
 
@@ -49,7 +48,6 @@ public:
     // Initialize particle energy
     particle_energy =
         Kokkos::View<double *>("particle_energy", num_particles);
-	particle_energy(particle_info.particle_index) = particle_info.energy_group;
 	//cross_sections = Kokkos::View<double *[2]>("cross_sections", num_particles);
   }
 
@@ -67,6 +65,8 @@ public:
     coef2[6] = -2.631976175590e-3; coef2[7] = 1.119543953861e-4; coef2[8] = -2.039149852002e-6;
 
     double lnrate_ion {0}; //cm^2
+
+	//Should this be a parallel_for?
     for (int i=0; i<9; i++) {
         lnrate_ion += coef2[i]*Kokkos::pow(Kokkos::log(field_info.electron_temperature),i);
     }
@@ -137,6 +137,14 @@ public:
     auto rand_gen = random_pool.get_state();
     double x = rand_gen.drand(0., 1.);
     random_pool.free_state(rand_gen);
+
+	//This is really not a good way to do this. Initializes the particle energy view if it is ~0 from the energy gorups
+	//where I currently store energy. In principle this should work to initialize from any source but you would
+	//need to pass it. I suspect the solution is either add a seperate energy initialization function or add an input
+	//into the constructor and have it initialize there. You'd need the index and the eenrgy to initialize.
+	if (particle_energy(particle_info.particle_index) < 1e-6){
+		particle_energy(particle_info.particle_index) = particle_info.energy_group;
+	}
 
 	double sigma_ion = ionization_cross_section(particle_info, field_info);
 	double sigma_cx = charge_exchange_cross_section(particle_info, field_info);
