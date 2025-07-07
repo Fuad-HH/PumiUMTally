@@ -109,7 +109,10 @@ int main(int argc, char *argv[]) {
 		outfile << output(i).direction[2] << std::endl;
 	}
 
-
+	REQUIRE_THAT(l, WithinAbs(2.40,.03))
+	REQUIRE_THAT(sdl, WithinAbs(2.40,.03))
+	REQUIRE_THAT(ux, WithinAbs(0.0,.03))
+	REQUIRE_THAT(sdx, WithinAbs(0.577,.03))
   }
   Kokkos::finalize();
   return 0;
