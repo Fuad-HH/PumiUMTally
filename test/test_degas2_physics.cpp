@@ -110,11 +110,12 @@ int main(int argc, char *argv[]) {
 		outfile << output(i).direction[2] << std::endl;
 	}
 
-	REQUIRE_THAT(l, Catch::Matchers::WithinAbs(2.40,.03));
-	REQUIRE_THAT(sdl, Catch::Matchers::WithinAbs(2.40,.03));
-	REQUIRE_THAT(ux, Catch::Matchers::WithinAbs(0.0,.03));
-	REQUIRE_THAT(sdux, Catch::Matchers::WithinAbs(0.577,.03));
+
   }
   Kokkos::finalize();
+  REQUIRE_THAT(l, Catch::Matchers::WithinAbs(2.40,.03));
+  REQUIRE_THAT(sdl, Catch::Matchers::WithinAbs(2.40,.03));
+  REQUIRE_THAT(ux, Catch::Matchers::WithinAbs(0.0,.03));
+  REQUIRE_THAT(sdux, Catch::Matchers::WithinAbs(0.577,.03));
   return 0;
 }
