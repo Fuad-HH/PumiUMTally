@@ -15,6 +15,7 @@ int main(int argc, char *argv[]) {
 
   {
     int numParticles = 1000;
+	double energy = 3.0;
 
     Kokkos::View<Omega_h::Real ***> sigma_t_;            // mat, T, g
     Kokkos::View<Omega_h::Real ***> sigma_a_;            // mat, T, g
@@ -34,7 +35,7 @@ int main(int argc, char *argv[]) {
           particles(i).direction[0] = 1.0;
           particles(i).direction[1] = 0;
           particles(i).direction[2] = 0;
-          particles(i).energy_group = 3.0;
+          particles(i).energy_group = energy;
           particles(i).weight = 1.0;
 		  particles(i).particle_index = i;
 
@@ -44,6 +45,12 @@ int main(int argc, char *argv[]) {
           fields(i).ion_temperature = 1000.0;
           // and others like this
         });
+
+	// Set the particle energy view
+	Kokkos::parallel_for(
+		"Set energies", numParticles, KOKKOS_LAMBDA(int i) {
+		  physics.set_energy(particles(i), energy);
+	});
 
     // Call the function to be tested
 	Kokkos::parallel_for(
@@ -55,12 +62,14 @@ int main(int argc, char *argv[]) {
 	Kokkos::deep_copy(output, particles);
 	std::ofstream outfile("Log.txt");
 
+	//These 4 functions should return the commented value for SEED=12345
+
 	double l {0};
 	for (int i=0; i < numParticles; ++i) {
 		l += output(i).position[0];
 	}
 	l /= numParticles;
-	outfile << "Average Distance (cm): " << l << std::endl;
+	outfile << "Average Distance (cm): " << l << std::endl; //2.41
 
 	double varl {0};
 	for (int i=0; i < numParticles; ++i) {
@@ -68,14 +77,14 @@ int main(int argc, char *argv[]) {
 	}
 	varl /= (numParticles - 1);
 	double sdl {sqrt(varl)};
-	outfile << "Standard Deviation of Distance (cm): " << sdl << std::endl;
+	outfile << "Standard Deviation of Distance (cm): " << sdl << std::endl; //2.38
 
 	double ux {0};
 	for (int i=0; i < numParticles; ++i) {
 		ux += output(i).direction[0];
 	}
 	ux /= numParticles;
-	outfile << "Mean x Direction: " << ux << std::endl;
+	outfile << "Mean x Direction: " << ux << std::endl; //0.0159
 
 	double varux;
 	for (int i=0; i < numParticles; ++i) {
@@ -83,7 +92,7 @@ int main(int argc, char *argv[]) {
 	}
 	varux /= (numParticles - 1);
 	double sdux {sqrt(varux)};
-	outfile << "Standard Deviation of Mean x Direction: " << sdux << std::endl;
+	outfile << "Standard Deviation of Mean x Direction: " << sdux << std::endl; //0.579
 
 
 	outfile << "Particle #,Energy(eV),Weight,X(cm),Y(cm),Z(cm),X_Dir,Y_Dir,Z_Dir" << std::endl;

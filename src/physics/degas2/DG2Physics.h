@@ -52,6 +52,11 @@ public:
   }
 
   KOKKOS_FUNCTION
+  void set_energy(ParticleInfo &particle_info, const double energy) const{
+	particle_energy(particle_info.particle_index) = energy;
+  }
+
+  KOKKOS_FUNCTION
   double ionization_cross_section(ParticleInfo &particle_info, const FieldInfo &field_info) const{
 	double energy = particle_energy(particle_info.particle_index);
 	double mp {938.27e6/(3e10*3e10)}; //eV/c^2 = eV*s^2/cm^2
@@ -142,9 +147,9 @@ public:
 	//where I currently store energy. In principle this should work to initialize from any source but you would
 	//need to pass it. I suspect the solution is either add a seperate energy initialization function or add an input
 	//into the constructor and have it initialize there. You'd need the index and the eenrgy to initialize.
-	if (particle_energy(particle_info.particle_index) < 1e-6){
+	/*if (particle_energy(particle_info.particle_index) < 1e-6){
 		particle_energy(particle_info.particle_index) = particle_info.energy_group;
-	}
+	}*/
 
 	double sigma_ion = ionization_cross_section(particle_info, field_info);
 	double sigma_cx = charge_exchange_cross_section(particle_info, field_info);
