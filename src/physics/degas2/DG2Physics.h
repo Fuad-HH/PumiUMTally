@@ -38,6 +38,7 @@ public:
     // Initialize particle energy
     particle_energy =
         Kokkos::View<double *>("particle_energy", num_particles);
+	particle_energy(particle_info.particle_index) = particle_info.energy_group;
 	//cross_sections = Kokkos::View<double *[2]>("cross_sections", num_particles);
   }
 
@@ -48,6 +49,7 @@ public:
     // Initialize particle energy
     particle_energy =
         Kokkos::View<double *>("particle_energy", num_particles);
+	particle_energy(particle_info.particle_index) = particle_info.energy_group;
 	//cross_sections = Kokkos::View<double *[2]>("cross_sections", num_particles);
   }
 
@@ -69,7 +71,7 @@ public:
         lnrate_ion += coef2[i]*Kokkos::pow(Kokkos::log(field_info.electron_temperature),i);
     }
 	double sigma_ion = Kokkos::exp(lnrate_ion)/Kokkos::sqrt(particle_velocity_squared);
-    return energy;
+    return sigma_ion;
   }
 
   KOKKOS_FUNCTION
@@ -196,8 +198,7 @@ public:
             new_weight = ws;
         }
     }
-	//particle_info.weight = new_weight;
-	particle_info.weight = sigma_ion;
+	particle_info.weight = new_weight;
 
 }
 //To here
