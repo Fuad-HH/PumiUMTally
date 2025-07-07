@@ -54,6 +54,15 @@ int main(int argc, char *argv[]) {
 	auto output = create_mirror_view(particles);
 	Kokkos::deep_copy(output, particles);
 	std::ofstream outfile("Log.txt");
+
+	double l {0};
+	for (int i; i < numParticles; ++i) {
+		l += output(i).position[0];
+	}
+	l /= numParticles;
+	outfile << "Mean free path (cm): " << l << std::endl;
+
+
 	outfile << "Particle #,Energy(eV),Weight,X(cm),Y(cm),Z(cm),X_Dir,Y_Dir,Z_Dir" << std::endl;
 
 	for (int i = 0; i < numParticles; ++i) {
