@@ -56,14 +56,14 @@ int main(int argc, char *argv[]) {
 	std::ofstream outfile("Log.txt");
 
 	double l {0};
-	for (int i; i < numParticles; ++i) {
+	for (int i=0; i < numParticles; ++i) {
 		l += output(i).position[0];
 	}
 	l /= numParticles;
 	outfile << "Average Distance (cm): " << l << std::endl;
 
 	double varl {0};
-	for (int i; i < numParticles; ++i) {
+	for (int i=0; i < numParticles; ++i) {
 		varl += (output(i).position[0] - l)*(output(i).position[0] - l);
 	}
 	varl /= (numParticles - 1);
@@ -71,14 +71,14 @@ int main(int argc, char *argv[]) {
 	outfile << "Standard Deviation of Distance (cm): " << sdl << std::endl;
 
 	double ux {0};
-	for (int i; i < numParticles; ++i) {
+	for (int i=0; i < numParticles; ++i) {
 		ux += output(i).direction[0];
 	}
 	ux /= numParticles;
 	outfile << "Mean x Direction: " << ux << std::endl;
 
 	double varux
-	for (int i; i < numParticles; ++i) {
+	for (int i=0; i < numParticles; ++i) {
 		varux += (output(i).direction[0] - ux)*(output(i).direction[0] - ux);
 	}
 	varux /= (numParticles - 1);
