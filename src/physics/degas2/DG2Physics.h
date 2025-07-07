@@ -69,7 +69,7 @@ public:
         lnrate_ion += coef2[i]*Kokkos::pow(Kokkos::log(field_info.electron_temperature),i);
     }
 	double sigma_ion = Kokkos::exp(lnrate_ion)/Kokkos::sqrt(particle_velocity_squared);
-    return sigma_ion;
+    return energy;
   }
 
   KOKKOS_FUNCTION
