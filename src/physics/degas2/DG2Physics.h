@@ -68,7 +68,7 @@ public:
         lnrate_ion += coef2[i]*Kokkos::pow(Kokkos::log(e_temperature),i);
     }
 	double sigma_ion = Kokkos::exp(lnrate_ion)/Kokkos::sqrt(particle_velocity_squared);
-    return sigma_ion;
+    return energy;
   }
 
   KOKKOS_FUNCTION
@@ -198,7 +198,8 @@ public:
             new_weight = ws;
         }
     }
-	particle_info.weight = new_weight;
+	//particle_info.weight = new_weight;
+	particle_info.weight = sigma_ion;
 
 }
 //To here
