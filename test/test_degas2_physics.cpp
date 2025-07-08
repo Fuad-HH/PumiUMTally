@@ -60,7 +60,7 @@ TEST_CASE("Test Degas2 Physics Functions"){
         });
 	auto output = create_mirror_view(particles);
 	Kokkos::deep_copy(output, particles);
-	std::ofstream outfile("Log.txt");
+	//std::ofstream outfile("Log.txt");
 
 	//These 4 functions should return the commented value for SEED=12345
 
@@ -69,7 +69,7 @@ TEST_CASE("Test Degas2 Physics Functions"){
 		l += output(i).position[0];
 	}
 	l /= numParticles;
-	outfile << "Average Distance (cm): " << l << std::endl; //2.41
+	//outfile << "Average Distance (cm): " << l << std::endl; //2.41
 
 	double varl {0};
 	for (int i=0; i < numParticles; ++i) {
@@ -77,14 +77,14 @@ TEST_CASE("Test Degas2 Physics Functions"){
 	}
 	varl /= (numParticles - 1);
 	double sdl {sqrt(varl)};
-	outfile << "Standard Deviation of Distance (cm): " << sdl << std::endl; //2.38
+	//outfile << "Standard Deviation of Distance (cm): " << sdl << std::endl; //2.38
 
 	double ux {0};
 	for (int i=0; i < numParticles; ++i) {
 		ux += output(i).direction[0];
 	}
 	ux /= numParticles;
-	outfile << "Mean x Direction: " << ux << std::endl; //0.0159
+	//outfile << "Mean x Direction: " << ux << std::endl; //0.0159
 
 	double varux;
 	for (int i=0; i < numParticles; ++i) {
@@ -92,6 +92,8 @@ TEST_CASE("Test Degas2 Physics Functions"){
 	}
 	varux /= (numParticles - 1);
 	double sdux {sqrt(varux)};
+
+	/*
 	outfile << "Standard Deviation of Mean x Direction: " << sdux << std::endl; //0.579
 
 
@@ -108,6 +110,7 @@ TEST_CASE("Test Degas2 Physics Functions"){
 		outfile << output(i).direction[1] << ",";
 		outfile << output(i).direction[2] << std::endl;
 	}
+	*/
   	REQUIRE_THAT(l, Catch::Matchers::WithinAbs(2.40,.03));
   	REQUIRE_THAT(sdl, Catch::Matchers::WithinAbs(2.40,.03));
   	REQUIRE_THAT(ux, Catch::Matchers::WithinAbs(0.0,.03));
