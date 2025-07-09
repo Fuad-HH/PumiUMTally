@@ -18,7 +18,7 @@ struct ParticleInfo {
   double position[3];  // Position in space (x, y, z)
   double direction[3]; // Direction vector (unit vector)
   double weight;
-  double energy_group; // Energy group *index*
+  int energy_group; // Energy group *index*
   int particle_index;
 };
 
@@ -184,7 +184,7 @@ public:
 	particle_info.direction[2] = vz/mag_v;
 
 	particle_energy(particle_info.particle_index) = 0.5*mp*mag_v*mag_v;
-	particle_info.energy_group = particle_energy(particle_info.particle_index); //Temporary for debugging
+	//particle_info.energy_group = particle_energy(particle_info.particle_index); //Temporary for debugging
 	//Adjust Weights
 	double new_weight = particle_info.weight*(1-
         (field_info.electron_density*sigma_ion)/
