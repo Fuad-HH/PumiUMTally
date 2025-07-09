@@ -175,8 +175,8 @@ TEST_CASE("Test Degas2 Physics Functions"){
 	Kokkos::parallel_for(
         "run physics", numParticles, KOKKOS_LAMBDA(int i) {
 		  int j = 0;
-		  while(particle(i).particle_weight > 0.0001){
-			if j != 0{
+		  while(particles(i).particle_weight > 0.0001){
+			if (j != 0){
 				Kokkos::resize(track, j+1);
 			}
           	physics.sample_collision_distance(particles(i), fields(i));
