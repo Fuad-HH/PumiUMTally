@@ -177,7 +177,7 @@ TEST_CASE("Test Degas2 Physics Particle Track Until Destroyed"){
 		  int j = 1;
 		  while(particles(i).weight > 0.0001){
 			if (j != 1){
-				Kokkos::resize(track, j);
+				Kokkos::resize(track, static_cast<Kokkos::size_t>(j));
 			}
           	physics.sample_collision_distance(particles(i), fields(i));
 		  	physics.collide_particle(particles(i), fields(i));
@@ -188,7 +188,7 @@ TEST_CASE("Test Degas2 Physics Particle Track Until Destroyed"){
 	auto output = create_mirror_view(track);
 	Kokkos::deep_copy(output, track);
 
-	int length = output.extent(0);
+	const int length = output.extent(0);
 
 	std::ofstream outfile("Log.txt");
 	outfile << "Particle #,Energy(eV),Weight,X(cm),Y(cm),Z(cm),X_Dir,Y_Dir,Z_Dir" << std::endl;
