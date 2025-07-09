@@ -174,10 +174,10 @@ TEST_CASE("Test Degas2 Physics Particle Track Until Destroyed"){
     // Call the function to be tested
 	Kokkos::parallel_for(
         "run physics", numParticles, KOKKOS_LAMBDA(int i) {
-		  int j = 0;
+		  int j = 1;
 		  while(particles(i).weight > 0.0001){
-			if (j != 0){
-				Kokkos::resize(track, const (j+1));
+			if (j != 1){
+				Kokkos::resize(track, j);
 			}
           	physics.sample_collision_distance(particles(i), fields(i));
 		  	physics.collide_particle(particles(i), fields(i));
