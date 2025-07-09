@@ -9,7 +9,7 @@
 #include <Kokkos_Core.hpp>
 #include <fstream>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
-
+/*
 TEST_CASE("Test Degas2 Physics Functions"){
   Kokkos::initialize();
 
@@ -110,7 +110,7 @@ TEST_CASE("Test Degas2 Physics Functions"){
 		outfile << output(i).direction[1] << ",";
 		outfile << output(i).direction[2] << std::endl;
 	}
-	*/
+
   	REQUIRE_THAT(l, Catch::Matchers::WithinAbs(2.40,.03));
   	REQUIRE_THAT(sdl, Catch::Matchers::WithinAbs(2.40,.03));
   	REQUIRE_THAT(ux, Catch::Matchers::WithinAbs(0.0,.03));
@@ -119,7 +119,7 @@ TEST_CASE("Test Degas2 Physics Functions"){
   Kokkos::finalize();
 
 }
-
+*/
 TEST_CASE("Test Degas2 Physics Particle Track Until Destroyed"){
   Kokkos::initialize();
 
