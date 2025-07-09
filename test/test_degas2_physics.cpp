@@ -133,7 +133,7 @@ TEST_CASE("Test Degas2 Physics Particle Track Until Destroyed"){
     Kokkos::View<Omega_h::Real ***> sigma_s_;            // mat, T, g
     DG2CrossSection crossSection(sigma_t_, sigma_a_, scattering_matrix_,
                                  sigma_s_);
-    DG2Physics physics(crossSection, numParticles);
+    DG2Physics physics(crossSection, numParticles, 12346);
 
     Kokkos::View<ParticleInfo *> particles("particles", numParticles);
     Kokkos::View<FieldInfo *> fields("fields", numParticles);
