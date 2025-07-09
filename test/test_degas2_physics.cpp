@@ -162,7 +162,7 @@ TEST_CASE("Test Degas2 Physics Functions"){
 	Kokkos::parallel_for(
 		"Set energies", numParticles, KOKKOS_LAMBDA(int i) {
 		  physics.set_energy(particles(i), energy);
-		  physics.collide_particles(particles(i), fields(i));
+		  physics.collide_particle(particles(i), fields(i));
 	});
 
 	//Reset weight
@@ -174,7 +174,7 @@ TEST_CASE("Test Degas2 Physics Functions"){
     // Call the function to be tested
 	Kokkos::parallel_for(
         "run physics", numParticles, KOKKOS_LAMBDA(int i) {
-		  int j = 0
+		  int j = 0;
 		  while(particle(i).particle_weight > 0.0001){
 			if j != 0{
 				Kokkos::resize(track, j+1);
@@ -204,7 +204,7 @@ TEST_CASE("Test Degas2 Physics Functions"){
 		outfile << output(i).direction[1] << ",";
 		outfile << output(i).direction[2] << std::endl;
 	}
-  	REQUIRE_THAT(output(length-1), Catch::Matchers::WithinAbs(0,.03));
+  	REQUIRE_THAT(output(length-1).weight, Catch::Matchers::WithinAbs(0,.03));
 
   }
   Kokkos::finalize();
