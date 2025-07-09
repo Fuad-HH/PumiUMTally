@@ -177,7 +177,7 @@ TEST_CASE("Test Degas2 Physics Particle Track Until Destroyed"){
 		  int j = 1;
 		  while(particles(i).weight > 0.0001){
 			if (j != 1){
-				Kokkos::resize(track, static_cast<Kokkos::size_t>(j));
+				Kokkos::resize(track, static_cast<size_t>(j));
 			}
           	physics.sample_collision_distance(particles(i), fields(i));
 		  	physics.collide_particle(particles(i), fields(i));
