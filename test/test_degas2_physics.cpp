@@ -137,7 +137,7 @@ TEST_CASE("Test Degas2 Physics Particle Track Until Destroyed"){
 
     Kokkos::View<ParticleInfo *> particles("particles", numParticles);
     Kokkos::View<FieldInfo *> fields("fields", numParticles);
-	Kokkos::View<ParticleInfo *> track("track", 1);
+	Kokkos::View<double *[3]> pos("pos", 1);
 
     Kokkos::parallel_for(
         "initialize_particles", numParticles, KOKKOS_LAMBDA(int i) {
@@ -177,11 +177,13 @@ TEST_CASE("Test Degas2 Physics Particle Track Until Destroyed"){
 		  int j = 1;
 		  while(particles(i).weight > 0.0001){
 			if (j != 1){
-				Kokkos::resize(track, (track.extent(0)+1));
+				Kokkos::resize(pos, (pos.extent(0)+1));
 			}
           	physics.sample_collision_distance(particles(i), fields(i));
 		  	physics.collide_particle(particles(i), fields(i));
-			track(j) = particles(i);
+			pos(j,0) = particles(i).position[0];
+			pos(j,1) = particles(i).position[1];
+			pos(j,2) = particles(i).position[2];
 			j++;
 		  }
         });
