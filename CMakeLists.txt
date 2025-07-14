@@ -96,6 +96,16 @@ if(PUMI_ENABLE_DEGAS2)
     target_sources(pumitally_degas2 PRIVATE ${PUMI_DEGAS2_SOURCES})
     target_link_libraries(pumitally_degas2 PUBLIC Omega_h::omega_h HDF5::HDF5)
     target_include_directories(pumitally_degas2 PUBLIC ${HDF5_INCLUDE_DIRS})
+
+
+    add_executable(degas2 src/physics/degas2/degas2-main.cpp)
+    target_link_libraries(degas2 PRIVATE pumitally_degas2 pumitallyopenmc)
+    target_include_directories(degas2
+            PRIVATE
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+            ${CMAKE_SOURCE_DIR}/src/pumitallyopenmc
+    )
 endif()
 ###################################################################
 
