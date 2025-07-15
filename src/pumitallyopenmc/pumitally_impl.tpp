@@ -1,5 +1,5 @@
-#ifndef PUMITALLYOPENMC_PUMITALLY_IMPL_HPP
-#define PUMITALLYOPENMC_PUMITALLY_IMPL_HPP
+#ifndef PUMITALLYOPENMC_PUMITALLY_IMPL_TPP
+#define PUMITALLYOPENMC_PUMITALLY_IMPL_TPP
 
 // TODO: rename the namespace and even the project to pumitally
 // openmc is not necessary in the name since it is general purpose
@@ -167,4 +167,4 @@ public:
 
 } // namespace pumiinopenmc
 
-#endif // PUMITALLYOPENMC_PUMITALLY_IMPL_HPP
+#endif // PUMITALLYOPENMC_PUMITALLY_IMPL_TPP

@@ -5,7 +5,7 @@
  */
 
 #include "DG2Physics.h"
-#include <pumipic_particle_data_structure.h>
+#include "pumitally_impl.tpp"
 
 // ******************************************* Helper Functions
 // ******************************************* //
@@ -21,9 +21,7 @@ int main(int argc, char *argv[]) {
   read_input_parameters(argc, argv, mesh_name, num_particles);
   print_initial_info(mesh_name, num_particles);
 
-  // Initialize PUMI-Tally
-  auto pumitally =
-      pumiinopenmc::PumiTally(mesh_name, num_particles, argc, argv);
+  pumiinopenmc::TallyTimes tally_times;
 
   return 0;
 }

@@ -28,7 +28,7 @@ endif()
 ####################### Headers and Sources #######################
 set(PUMITALLYOPENMC_HEADERS
         src/pumitallyopenmc/pumipic_particle_data_structure.h
-        src/pumitallyopenmc/pumitally_impl.hpp
+        src/pumitallyopenmc/pumitally_impl.tpp
 )
 
 set(PUMITALLYOPENMC_SOURCES
@@ -71,6 +71,7 @@ set(CMAKE_BUILD_RPATH "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}")
 
 
 ################################## Create Library #################
+# TODO: Create a different library for impl
 add_library(pumitallyopenmc)
 target_sources(pumitallyopenmc PRIVATE ${PUMITALLYOPENMC_SOURCES})
 target_link_libraries(pumitallyopenmc PRIVATE pumipic::pumipic)
@@ -96,7 +97,7 @@ if(PUMI_ENABLE_DEGAS2)
     find_package(HDF5 REQUIRED COMPONENTS CXX)
     add_library(pumitally_degas2)
     target_sources(pumitally_degas2 PRIVATE ${PUMI_DEGAS2_SOURCES})
-    target_link_libraries(pumitally_degas2 PUBLIC Omega_h::omega_h HDF5::HDF5)
+    target_link_libraries(pumitally_degas2 PUBLIC pumipic::pumipic HDF5::HDF5)
     target_include_directories(pumitally_degas2 PUBLIC ${HDF5_INCLUDE_DIRS})
 
 

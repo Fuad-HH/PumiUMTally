@@ -1,5 +1,5 @@
 #include "pumipic_particle_data_structure.h"
-#include "pumitally_impl.hpp"
+#include "pumitally_impl.tpp"
 
 namespace pumiinopenmc {
 PumiTally::PumiTally(std::string &mesh_filename, int64_t num_particles,
@@ -42,4 +42,10 @@ void PumiTally::write_pumi_tally_mesh() {
   pimpl->tally_times.vtk_file_write_time += elapsed_seconds.count();
   pimpl->tally_times.print_times();
 }
+
+PumiTally::~PumiTally() {
+  pimpl.reset(nullptr);
+  Kokkos::finalize();
+}
+
 } // namespace pumiinopenmc

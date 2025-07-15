@@ -2,8 +2,7 @@
 // Created by Fuad Hasan on 12/3/24.
 //
 
-#include "pumitally_impl.hpp"
-#include "pumipic_particle_data_structure.h"
+#include "pumitally_impl.tpp"
 #include <Omega_h_file.hpp>
 #include <Omega_h_mesh.hpp>
 #include <Omega_h_shape.hpp>
@@ -18,10 +17,6 @@ void TallyTimes::print_times() const {
   printf("[TIME] VTK file write time     : %f seconds\n", vtk_file_write_time);
   printf("[TIME] Total PumiPic time      : %f seconds\n",
          initialization_time + total_time_to_tally + vtk_file_write_time);
-}
-PumiTally::~PumiTally() {
-  pimpl.reset(nullptr);
-  Kokkos::finalize();
 }
 
 PumiTallyImpl::PumiTallyImpl(std::string &mesh_filename, int64_t num_particles,
