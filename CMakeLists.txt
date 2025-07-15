@@ -28,9 +28,11 @@ endif()
 ####################### Headers and Sources #######################
 set(PUMITALLYOPENMC_HEADERS
         src/pumitallyopenmc/pumipic_particle_data_structure.h
+        src/pumitallyopenmc/pumitally_impl.hpp
 )
 
 set(PUMITALLYOPENMC_SOURCES
+        src/pumitallyopenmc/pumitally_impl.cpp
         src/pumitallyopenmc/pumipic_particle_data_structure.cpp
 )
 

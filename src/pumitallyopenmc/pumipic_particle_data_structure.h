@@ -11,8 +11,8 @@
 namespace pumiinopenmc {
 // ------------------------------------------------------------------------------------------------//
 // Struct for PumiTallyImpl
-struct PumiParticleAtElemBoundary;
-struct PumiTallyImpl;
+class PumiParticleAtElemBoundary;
+class PumiTallyImpl;
 
 // PumiTally class
 // This is a pimpl class that contains the implementation of the PumiTallyImpl
