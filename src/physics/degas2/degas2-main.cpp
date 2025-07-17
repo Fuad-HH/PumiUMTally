@@ -7,6 +7,8 @@
 #include <iostream>
 #include <stdexcept>
 #include <vector>
+#include <fstream>
+#include <cstdlib>
 
 #include "DG2Physics.h"
 #include "pumitally_impl.tpp"
@@ -311,6 +313,9 @@ void get_centroids(Omega_h::Mesh &mesh,
 }
 
 // TODO: Implement the function to retrieve field values based on centroids
+// NOTE: This requires the python script and the plasma source mesh and data
+// to be in the folder with this cpp file. The python script may need to be
+// updated to read in different plasma source data.
 void get_field_values(Omega_h::Reals centroids, Fields &fields) {
   auto centroids_h = Omega_h::HostRead<Omega_h::Real>(centroids);
 
