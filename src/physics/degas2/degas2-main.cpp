@@ -333,8 +333,8 @@ void get_field_values(Omega_h::Reals centroids, Fields &fields) {
   // TODO: Add your code here to retrieve the actual field values
   // Write centroid coords to CSV to be read by python script
   std::ofstream coords("centroid_coords.csv");
-  for (int j = 0; j < (centroids.size() / 3); j++) {
-    coords << j << "," << centroids[j*3 + 0] << "," << centroids[j*3 + 1] << "," << centroids[j*3 + 2] << std::endl;
+  for (int j = 0; j < (centroids_h.size() / 3); j++) {
+    coords << j << "," << centroids_h[j*3 + 0] << "," << centroids_h[j*3 + 1] << "," << centroids_h[j*3 + 2] << std::endl;
   }
   coords.close();
 
