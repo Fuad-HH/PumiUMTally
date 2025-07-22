@@ -20,6 +20,7 @@ struct ParticleInfo {
   double weight;
   int energy_group; // Energy group *index*
   int particle_index;
+  double alpha; //To be multiplied in when computing tally
 };
 
 struct FieldInfo {
@@ -178,6 +179,8 @@ public:
 	auto vz = Kokkos::sqrt(field_info.ion_temperature/mp)*Kokkos::sqrt(-2 * Kokkos::log(y1))*Kokkos::sin(2*M_PI*y2);
 
 	auto mag_v = Kokkos::sqrt(vx*vx + vy*vy + vz*vz);
+
+	particle_info.alpha = 1/mag_v;
 
 	particle_info.direction[0] = vx/mag_v;
 	particle_info.direction[1] = vy/mag_v;
