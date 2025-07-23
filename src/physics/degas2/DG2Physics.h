@@ -134,6 +134,10 @@ public:
 	return sigma_cx;
   }
 
+  KOKKOS_FUNCTION //IF THIS IS CHANGED MAY NEED TO CHANGE max_sigma_cx in the collision code
+  double analytic_cross_section_CE(double energy) const{
+    return (0.6937e-14*(1-0.155*Kokkos::log10(energy))*(1-0.155*Kokkos::log10(energy)))/(1+0.1112e-14*Kokkos::pow(energy,3.3));
+  }
 
   KOKKOS_FUNCTION
   void sample_collision_distance(ParticleInfo &particle_info,
@@ -160,28 +164,47 @@ public:
 
 	//Generate Random Numbers
 	auto rand_gen = random_pool.get_state();
-    double x1 = rand_gen.drand(0., 1.);
-	double x2 = rand_gen.drand(0., 1.);
-	double y1 = rand_gen.drand(0., 1.);
-	double y2 = rand_gen.drand(0., 1.);
 	double ww = rand_gen.drand(0., 1.);
-    random_pool.free_state(rand_gen);
 
 	double sigma_ion = ionization_cross_section(particle_info, field_info);
 	double sigma_cx = charge_exchange_cross_section(particle_info, field_info);
 
 	//Compute New Direction and Energy and set particle info
 	//Compute 3 Maxwellian (Gaussian) distributed velocities (cm/s)
-	 double mp {938.27e6/(3e10*3e10)}; //eV/c^2 = eV*s^2/cm^2
+	double mp {938.27e6/(3e10*3e10)}; //eV/c^2 = eV*s^2/cm^2
 
-	auto vx = Kokkos::sqrt(field_info.ion_temperature/mp)*Kokkos::sqrt(-2 * Kokkos::log(x1))*Kokkos::cos(2*M_PI*x2);
-    auto vy = Kokkos::sqrt(field_info.ion_temperature/mp)*Kokkos::sqrt(-2 * Kokkos::log(x1))*Kokkos::sin(2*M_PI*x2);
-	auto vz = Kokkos::sqrt(field_info.ion_temperature/mp)*Kokkos::sqrt(-2 * Kokkos::log(y1))*Kokkos::sin(2*M_PI*y2);
+	bool rejection_test = false;
+        auto old_mag_v = Kokkos::sqrt(2*particle_energy(particle_info.particle_index)/mp);
+        double vx;
+        double vy;
+        double vz;
+        //Loops this until it passes the rejection test
+        while (!rejection_test) {
+          //Generate random numbers for the velocity
+          double x1 = rand_gen.drand(0., 1.);
+          double x2 = rand_gen.drand(0., 1.);
+          double y1 = rand_gen.drand(0., 1.);
+          double y2 = rand_gen.drand(0., 1.);
 
-	auto mag_v = Kokkos::sqrt(vx*vx + vy*vy + vz*vz);
+          //Sample a new velocity from the thermal distribution (cm/s)
+          vx = Kokkos::sqrt(field_info.ion_temperature/mp)*Kokkos::sqrt(-2 * Kokkos::log(x1))*Kokkos::cos(2*M_PI*x2);
+          vy = Kokkos::sqrt(field_info.ion_temperature/mp)*Kokkos::sqrt(-2 * Kokkos::log(x1))*Kokkos::sin(2*M_PI*x2);
+          vz = Kokkos::sqrt(field_info.ion_temperature/mp)*Kokkos::sqrt(-2 * Kokkos::log(y1))*Kokkos::sin(2*M_PI*y2);
 
-	particle_info.alpha = 1/mag_v;
+          //Compute the relative velocity
+          auto rel_vx = vx - particle_info.direction[0]*old_mag_v;
+          auto rel_vy = vy - particle_info.direction[1]*old_mag_v;
+          auto rel_vz = vz - particle_info.direction[2]*old_mag_v;
+          auto mag_v2 = rel_vx*rel_vx + rel_vy*rel_vy + rel_vz*rel_vz;
 
+          //Generate random number and compare to sigma/sigma_max
+          if (rand_gen.drand(0., 1.) < analytic_cross_section_CE(0.5*mp*mag_v2)/max_sigma_cx) {
+            rejection_test = true;
+          }
+        }
+
+        //Now that the rejection test has passed, set the new information
+        double mag_v{Kokkos::sqrt(vx*vx+vy*vy+vz*vz)};
 	particle_info.direction[0] = vx/mag_v;
 	particle_info.direction[1] = vy/mag_v;
 	particle_info.direction[2] = vz/mag_v;
@@ -206,6 +229,8 @@ public:
         }
     }
 	particle_info.weight = new_weight;
+	random_pool.free_state(rand_gen);
+
 
 }
 //To here
