@@ -172,6 +172,7 @@ public:
 	//Compute New Direction and Energy and set particle info
 	//Compute 3 Maxwellian (Gaussian) distributed velocities (cm/s)
 	double mp {938.27e6/(3e10*3e10)}; //eV/c^2 = eV*s^2/cm^2
+	double max_sigma_cx = 3.8e-14;
 
 	bool rejection_test = false;
     auto old_mag_v = Kokkos::sqrt(2*particle_energy(particle_info.particle_index)/mp);
