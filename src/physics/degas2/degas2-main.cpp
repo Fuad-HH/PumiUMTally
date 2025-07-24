@@ -335,7 +335,7 @@ void get_field_values(Omega_h::Reals centroids, Fields &fields) {
   fields.ion_temperature.resize(num_elements, 1.0);
   fields.electron_density.resize(num_elements, 1.0);
   fields.ion_density.resize(num_elements, 1.0);
-  fields.bulk_flow_velocity.resize(num_elements, 0.0);
+  fields.bulk_flow_velocity.resize(3*num_elements, 0.0);
 
   // TODO: Add your code here to retrieve the actual field values
   // Write centroid coords to CSV to be read by python script
