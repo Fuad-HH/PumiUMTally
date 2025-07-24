@@ -351,6 +351,177 @@ void apply_boundary_condition(Omega_h::Mesh &mesh, PPPS *ptcls,
                         "apply vacumm boundary condition");
 }
 
+void compute_boundary_normals(Omega_h::Mesh &mesh) {
+  const auto exposed_edges = Omega_h::mark_exposed_sides(&mesh);
+  const auto face2elems = mesh.ask_up(mesh.dim() - 1, mesh.dim()).ab2b;
+  const auto face2elemsOffset = mesh.ask_up(mesh.dim() - 1, mesh.dim()).a2ab;
+  const auto elem2nodes = mesh.ask_down(mesh.dim(), 0).ab2b;
+  const auto face2nodes = mesh.ask_down(mesh.dim() - 1, 0).ab2b;
+  const auto coords = mesh.coords();
+
+  Omega_h::Write<Omega_h::Real> normals(face2elems.size() * 3, 0.0,
+                                        "boundary_normals");
+
+  // calculate the normals for the exposed edges
+  auto calculate_normals = OMEGA_H_LAMBDA(const Omega_h::LO &face_id) {
+    if (exposed_edges[face_id]) {
+      // get this face's nodes
+      const auto face_nodes = Omega_h::gather_verts<3>(face2nodes, face_id);
+      const auto face_coords =
+          Omega_h::gather_vectors<3, 3>(coords, face_nodes);
+      const auto normal = Omega_h::cross(
+          face_coords[1] - face_coords[0],
+          face_coords[2] - face_coords[0]); // cross product to get normal
+
+      const auto norm = Omega_h::norm(normal);
+
+      // fix direction of the normal: get the fourth node of the element and
+      // check with it
+      const auto elem_id =
+          face2elems[face2elemsOffset[face_id]]; // edge sides only have one
+                                                 // element
+      const auto elem_nodes = Omega_h::gather_verts<4>(elem2nodes, elem_id);
+      int fourth_node = -1;
+      for (int i = 0; i < 4; ++i) {
+        if (elem_nodes[i] != face_nodes[0] && elem_nodes[i] != face_nodes[1] &&
+            elem_nodes[i] != face_nodes[2]) {
+          fourth_node = elem_nodes[i];
+          break;
+        }
+      }
+      OMEGA_H_CHECK_PRINTF(fourth_node != -1,
+                           "Error: fourth node not found for face %d\n",
+                           face_id);
+
+      const Omega_h::Vector<3> fourth_node_coord = {
+          coords[fourth_node * 3 + 0], coords[fourth_node * 3 + 1],
+          coords[fourth_node * 3 + 2]};
+
+      // check if the normal points towards the fourth node
+      Omega_h::Vector<3> fourth_2_face_vector = {
+          fourth_node_coord[0] - face_coords[0][0],
+          fourth_node_coord[1] - face_coords[0][1],
+          fourth_node_coord[2] - face_coords[0][2]};
+
+      Omega_h::Vector<3> inner_norm;
+      if (Omega_h::inner_product(normal, fourth_2_face_vector) < 0) {
+        // flip the normal if it points away from the fourth node
+        for (int i = 0; i < 3; ++i) {
+          inner_norm[i] = -normal[i] / norm;
+        }
+      } else {
+        for (int i = 0; i < 3; ++i) {
+          inner_norm[i] = normal[i] / norm;
+        }
+      }
+      // store the normal in the normals array
+      normals[face_id * 3 + 0] = inner_norm[0];
+      normals[face_id * 3 + 1] = inner_norm[1];
+      normals[face_id * 3 + 2] = inner_norm[2];
+    }
+  };
+  Omega_h::parallel_for(mesh.nfaces(), calculate_normals,
+                        "compute boundary normals");
+  mesh.add_tag(Omega_h::FACE, "normals", 3, Omega_h::Reals(normals));
+}
+
+void apply_reflection_boundary_condition(
+    Omega_h::Mesh &mesh, PPPS *ptcls, Omega_h::Write<Omega_h::LO> &elem_ids,
+    Omega_h::Write<Omega_h::LO> &next_elems,
+    Omega_h::Write<Omega_h::LO> &ptcl_done,
+    Omega_h::Write<Omega_h::LO> &lastExit, Omega_h::Write<Omega_h::LO> &xFace,
+    Omega_h::Write<Omega_h::Real> &inter_points,
+    Omega_h::Write<int> material_ids, bool initial) {
+
+  // TODO: make this a member variable of the struct
+  auto particle_destination = ptcls->get<1>();
+  auto particle_origin = ptcls->get<0>();
+
+  const auto class_ids = mesh.get_array<int>(3, "class_id");
+  const auto normals = mesh.get_array<Omega_h::Real>(Omega_h::FACE, "normals");
+
+  auto checkExposedEdges =
+      PS_LAMBDA(const int e, const int pid, const int mask) {
+    if (mask > 0 && !ptcl_done[pid]) {
+      bool reached_destination = (lastExit[pid] == -1);
+      bool hit_outer_boundary =
+          ((next_elems[pid] == -1) && (elem_ids[pid] != -1));
+
+      // for the initial run, we need to find the initial position of the
+      // particles
+      bool hit_material_boundary = false;
+      if (!initial) { // stop at geometry boundary
+        if (next_elems[pid] != -1) {
+          if (class_ids[elem_ids[pid]] !=
+              class_ids[next_elems[pid]]) { // particle crosses geometry
+            // boundary
+            hit_material_boundary = true;
+            material_ids[pid] = class_ids[next_elems[pid]];
+          }
+        } else {
+          material_ids[pid] = -1; // no material id if not in an element
+        }
+      }
+
+      ptcl_done[pid] =
+          (reached_destination || hit_material_boundary) ? 1 : ptcl_done[pid];
+      // assert that if the next element is -1, then the material id is -1
+      if (!initial) {
+        if (next_elems[pid] == -1) {
+          OMEGA_H_CHECK_PRINTF(
+              material_ids[pid] == -1,
+              "Error: next_elems[%d] is -1 but material_ids[%d] "
+              "is %d\n",
+              pid, pid, material_ids[pid]);
+        }
+        // printf("Pid %d next element %d, elem id %d, material id %d\n",
+        //        pid, next_elems[pid], elem_ids[pid], material_ids[pid]);
+      }
+
+      // reflective boundary condition
+      if (hit_outer_boundary) { // just reached the boundary
+        // printf("Moving particle %4d (from -> to): element (%5d -> %5d)
+        // Material (%3d -> %3d)\n",
+        //      pid, elem_ids[pid], next_elems[pid],
+        //      class_ids[elem_ids[pid]], material_ids[pid]);
+        xFace[pid] = lastExit[pid];
+        OMEGA_H_CHECK_PRINTF(lastExit[pid] != -1,
+                             "Error: lastExit[%d] is -1 but "
+                             "hit_outer_boundary is true\n",
+                             pid);
+
+        // change direction
+        auto normal = Omega_h::Vector<3>{normals[lastExit[pid] * 3 + 0],
+                                         normals[lastExit[pid] * 3 + 1],
+                                         normals[lastExit[pid] * 3 + 2]};
+        Omega_h::Vector<3> particle_direction = {
+            particle_destination(pid, 0) - particle_origin(pid, 0),
+            particle_destination(pid, 1) - particle_origin(pid, 1),
+            particle_destination(pid, 2) - particle_origin(pid, 2)};
+        // reflect the particle direction
+        Omega_h::Vector<3> reflected_direction =
+            particle_direction -
+            2.0 * Omega_h::inner_product(particle_direction, normal) * normal;
+
+        // change the particle's position
+        // particle reaches the boundary
+        particle_origin(pid, 0) = inter_points[pid * 3];
+        particle_origin(pid, 1) = inter_points[pid * 3 + 1];
+        particle_origin(pid, 2) = inter_points[pid * 3 + 2];
+
+        particle_destination(pid, 0) =
+            particle_origin(pid, 0) + reflected_direction[0];
+        particle_destination(pid, 1) =
+            particle_origin(pid, 1) + reflected_direction[1];
+        particle_destination(pid, 2) =
+            particle_origin(pid, 2) + reflected_direction[2];
+      }
+    }
+  };
+  pumipic::parallel_for(ptcls, checkExposedEdges,
+                        "apply reflective boundary condition");
+}
+
 void PumiParticleAtElemBoundary::initialize_flux_array(size_t nelems,
                                                        size_t nEgroups) {
   Kokkos::resize(flux_, nelems, nEgroups, 3);
@@ -385,9 +556,9 @@ void PumiParticleAtElemBoundary::operator()(
     evaluateFlux(ptcls, inter_points, elem_ids, ptcl_done);
     updatePrevXPoint(inter_points);
   }
-  apply_boundary_condition(mesh, ptcls, elem_ids, next_elems, ptcl_done,
-                           lastExit, inter_faces, inter_points, material_ids_,
-                           initial_);
+  apply_reflection_boundary_condition(mesh, ptcls, elem_ids, next_elems,
+                                      ptcl_done, lastExit, inter_faces,
+                                      inter_points, material_ids_, initial_);
   move_to_next_element(ptcls, elem_ids, next_elems);
 }
 
@@ -750,6 +921,7 @@ void PumiTallyImpl::load_pumipic_mesh_and_init_particles(int &argc,
   read_pumipic_lib_and_full_mesh(argc, argv);
   Omega_h::Mesh *mesh = partition_pumipic_mesh();
   create_and_initialize_pumi_particle_structure(mesh);
+  compute_boundary_normals(*mesh);
 }
 
 } // namespace pumiinopenmc
