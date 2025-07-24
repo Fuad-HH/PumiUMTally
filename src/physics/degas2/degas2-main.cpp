@@ -132,6 +132,9 @@ void transport(pumiinopenmc::PumiTallyImpl &pumi_tally, DG2Physics &physics,
     auto particle_orig = pumi_tally.pumipic_ptcls->get<0>();
     auto particle_weight = pumi_tally.pumipic_ptcls->get<4>();
     auto particle_group = pumi_tally.pumipic_ptcls->get<5>();
+
+    auto last_exit =
+        pumi_tally.p_pumi_particle_at_elem_boundary_handler->last_exit_;
     auto get_new_destination =
         PS_LAMBDA(const int &e, const int &pid, const int &mask) {
       if (mask > 0) { // FIXME: check if the particle is at destination or at
@@ -160,7 +163,9 @@ void transport(pumiinopenmc::PumiTallyImpl &pumi_tally, DG2Physics &physics,
         field_info.bulk_flow_velocity[1] = bulk_flow_velocity[e * 3 + 1];
         field_info.bulk_flow_velocity[2] = bulk_flow_velocity[e * 3 + 2];
 
-        physics.collide_particle(particle_info, field_info);
+        if (last_exit[pid] == -1) { // reached destination
+          physics.collide_particle(particle_info, field_info);
+        }
         physics.sample_collision_distance(particle_info, field_info);
 
         // Update particle position and direction
@@ -425,7 +430,7 @@ void sample_initial_particle_energy(Kokkos::View<double *> energy_array) {
     // two independent normally distributed values from two independent
     // uniformly distributed numbers on the interval (0,1). (x1, x2) is the
     // first pair. (y1, y2) is the second pair. Note this technically could make
-    //4 independent normally distributed values, but we only need three. This
+    // 4 independent normally distributed values, but we only need three. This
     // generates a velocity vector (vx,vy,vz) sampled from an ideal gas at
     // temperature temp.
     auto generator = randomPool.get_state();

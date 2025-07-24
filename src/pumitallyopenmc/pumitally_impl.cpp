@@ -565,6 +565,7 @@ void PumiParticleAtElemBoundary::operator()(
   if (!initial_) {
     evaluateFlux(ptcls, inter_points, elem_ids, ptcl_done);
     updatePrevXPoint(inter_points);
+    updateLastExit(lastExit);
   }
   apply_reflection_boundary_condition(mesh, ptcls, elem_ids, next_elems,
                                       ptcl_done, lastExit, inter_faces,

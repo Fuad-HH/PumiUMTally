@@ -70,6 +70,10 @@ public:
 
   void updatePrevXPoint(Omega_h::Write<Omega_h::Real> &xpoints);
 
+  void updateLastExit(Omega_h::Write<Omega_h::LO> &lastExit) {
+    last_exit_ = lastExit;
+  }
+
   void updatePrevXPoint(PPPS *ptcls);
 
   void evaluateFlux(PPPS *ptcls, Omega_h::Write<Omega_h::Real> xpoints,
@@ -92,6 +96,7 @@ public:
   Omega_h::Write<Omega_h::Real> prev_xpoint_;
   Omega_h::Write<Omega_h::Real> total_tracklength_;
   Omega_h::Write<int> material_ids_;
+  Omega_h::Write<Omega_h::LO> last_exit_;
 };
 // ------------------------------------------------------------------------------------------------//
 
