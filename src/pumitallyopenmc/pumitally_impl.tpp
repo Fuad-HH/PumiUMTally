@@ -20,6 +20,12 @@ struct TallyTimes {
   void print_times() const;
 };
 
+enum class SourceDistribution {
+    UNIFORM, // Source uniformly distributed across the mesh
+    EQUAL,    // Source at centroids of each element
+    ZERO     // in the zeroth element centroid
+};
+
 // ------------------------------------------------------------------------------------------------//
 // * Data structure for PumiPic
 // Particle: 0-origin, 1-destination, 2-particle_id,
@@ -123,15 +129,15 @@ public:
 
   // * Constructor
   PumiTallyImpl(std::string &mesh_filename, int64_t num_particles, int &argc,
-                char **&argv); // fixme extra &
+                char **&argv, SourceDistribution source_dist = SourceDistribution::ZERO); // fixme extra &
 
   // * Destructor
   ~PumiTallyImpl() = default;
 
   // Functions
-  void create_and_initialize_pumi_particle_structure(Omega_h::Mesh *mesh);
+  void create_and_initialize_pumi_particle_structure(Omega_h::Mesh *mesh, SourceDistribution source_dist);
 
-  void load_pumipic_mesh_and_init_particles(int &argc, char **&argv);
+  void load_pumipic_mesh_and_init_particles(int &argc, char **&argv,  SourceDistribution source_dist);
 
   Omega_h::Mesh *partition_pumipic_mesh();
 

@@ -10,6 +10,13 @@
 
 namespace pumiinopenmc {
 
+void distributeParticlesBasesOnVolume(Omega_h::Mesh &mesh,
+                                      pumiinopenmc::PPPS::kkLidView ppe,
+                                      const int numPtcls);
+void initialize_uniform_source(Omega_h::Mesh &mesh,
+                               Omega_h::Write<Omega_h::Real> particle_positions,
+                               pumiinopenmc::PPPS::kkLidView ppe);
+
 void TallyTimes::print_times() const {
   printf("\n");
   printf("[TIME] Initialization time     : %f seconds\n", initialization_time);
@@ -20,7 +27,8 @@ void TallyTimes::print_times() const {
 }
 
 PumiTallyImpl::PumiTallyImpl(std::string &mesh_filename, int64_t num_particles,
-                             int &argc, char **&argv) {
+                             int &argc, char **&argv,
+                             SourceDistribution source_dist) {
   pumi_ps_size = num_particles;
   oh_mesh_fname = mesh_filename;
 
@@ -33,9 +41,11 @@ PumiTallyImpl::PumiTallyImpl(std::string &mesh_filename, int64_t num_particles,
 
   // todo can track lengths be here?
 
-  load_pumipic_mesh_and_init_particles(argc, argv);
-  start_pumi_particles_in_0th_element(*p_picparts_->mesh(),
-                                      pumipic_ptcls.get());
+  load_pumipic_mesh_and_init_particles(argc, argv, source_dist);
+  if (source_dist == SourceDistribution::ZERO) {
+    start_pumi_particles_in_0th_element(*p_picparts_->mesh(),
+                                        pumipic_ptcls.get());
+  }
 
   p_particle_tracer_ = std::make_unique<
       ParticleTracer<PPParticle, pumiinopenmc::PumiParticleAtElemBoundary>>(
@@ -359,7 +369,7 @@ void compute_boundary_normals(Omega_h::Mesh &mesh) {
   const auto face2nodes = mesh.ask_down(mesh.dim() - 1, 0).ab2b;
   const auto coords = mesh.coords();
 
-  Omega_h::Write<Omega_h::Real> normals(face2elems.size() * 3, 0.0,
+  Omega_h::Write<Omega_h::Real> normals(mesh.nfaces() * 3, 0.0,
                                         "boundary_normals");
 
   // calculate the normals for the exposed edges
@@ -776,6 +786,32 @@ void PumiTallyImpl::search_and_rebuild(bool initial, const bool migrate) {
   }
 }
 
+std::unique_ptr<PPPS>
+pp_create_particle_structure(Omega_h::Mesh mesh, pumipic::lid_t numPtcls,
+                             pumiinopenmc::PPPS::kkLidView ptcls_per_elem) {
+  Omega_h::Int ne = mesh.nelems();
+  pumiinopenmc::PPPS::kkGidView element_gids("element_gids", ne);
+
+  Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace> policy;
+
+  Omega_h::parallel_for(
+      ne, OMEGA_H_LAMBDA(const Omega_h::LO &i) { element_gids(i) = i; });
+
+#ifdef PUMI_USE_KOKKOS_CUDA
+  printf("PumiPIC Using GPU for simulation...\n");
+  policy = Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace>(10000, 32);
+#else
+  printf("PumiPIC Using CPU for simulation...\n");
+  policy =
+      Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace>(10000, Kokkos::AUTO());
+#endif
+
+  auto ptcls = std::make_unique<pumipic::DPS<pumiinopenmc::PPParticle>>(
+      policy, ne, numPtcls, ptcls_per_elem, element_gids);
+
+  return ptcls;
+}
+
 std::unique_ptr<PPPS> pp_create_particle_structure(Omega_h::Mesh mesh,
                                                    pumipic::lid_t numPtcls) {
   Omega_h::Int ne = mesh.nelems();
@@ -884,9 +920,35 @@ Omega_h::Mesh *PumiTallyImpl::partition_pumipic_mesh() {
 }
 
 void PumiTallyImpl::create_and_initialize_pumi_particle_structure(
-    Omega_h::Mesh *mesh) {
-  pumipic_ptcls = pp_create_particle_structure(*mesh, pumi_ps_size);
-  start_pumi_particles_in_0th_element(*mesh, pumipic_ptcls.get());
+    Omega_h::Mesh *mesh, SourceDistribution source_dist) {
+  PPPS::kkLidView ppe("ptcls_per_elem", mesh->nelems());
+  if (source_dist == SourceDistribution::UNIFORM) {
+    distributeParticlesBasesOnVolume(*mesh, ppe, pumi_ps_size);
+  }
+  pumipic_ptcls =
+      pp_create_particle_structure(*mesh, pumi_ps_size, ppe); // fixme
+  if (source_dist == SourceDistribution::UNIFORM) {
+    auto device_pos_buffer_l = device_pos_buffer_;
+    initialize_uniform_source(*mesh, device_pos_buffer_l, ppe);
+    // copy the device positions to the particle structure
+    auto init_loc = pumipic_ptcls->get<0>();
+    auto pids = pumipic_ptcls->get<2>();
+
+    auto copy_initial_positions =
+        PS_LAMBDA(const int &e, const int &pid, const int &mask) {
+      if (mask > 0) {
+        pids(pid) = pid;
+        init_loc(pid, 0) = device_pos_buffer_l[pid * 3 + 0];
+        init_loc(pid, 1) = device_pos_buffer_l[pid * 3 + 1];
+        init_loc(pid, 2) = device_pos_buffer_l[pid * 3 + 2];
+      }
+    };
+    pumipic::parallel_for(pumipic_ptcls.get(), copy_initial_positions,
+                          "copy initial positions from device buffer");
+  }
+  if (source_dist == SourceDistribution::ZERO) {
+    start_pumi_particles_in_0th_element(*mesh, pumipic_ptcls.get());
+  }
   p_pumi_particle_at_elem_boundary_handler =
       std::make_unique<pumiinopenmc::PumiParticleAtElemBoundary>(
           mesh->nelems(), pumipic_ptcls->capacity());
@@ -916,12 +978,196 @@ void PumiTallyImpl::read_pumipic_lib_and_full_mesh(int &argc, char **&argv) {
          full_mesh_.nelems());
 }
 
-void PumiTallyImpl::load_pumipic_mesh_and_init_particles(int &argc,
-                                                         char **&argv) {
+void PumiTallyImpl::load_pumipic_mesh_and_init_particles(
+    int &argc, char **&argv, SourceDistribution source_dist) {
   read_pumipic_lib_and_full_mesh(argc, argv);
   Omega_h::Mesh *mesh = partition_pumipic_mesh();
-  create_and_initialize_pumi_particle_structure(mesh);
+  create_and_initialize_pumi_particle_structure(mesh, source_dist);
   compute_boundary_normals(*mesh);
+}
+
+OMEGA_H_DEVICE o::Real volume_tet(const o::Few<o::Vector<3>, 4> &tet_verts) {
+  o::Few<o::Vector<3>, 3> basis33 = {tet_verts[1] - tet_verts[0],
+                                     tet_verts[2] - tet_verts[0],
+                                     tet_verts[3] - tet_verts[0]};
+  auto volume = o::tet_volume_from_basis(basis33);
+  return volume;
+}
+
+o::Real volume_of_3d_mesh(o::Mesh &mesh) {
+  OMEGA_H_CHECK_PRINTF(mesh.dim() == 3,
+                       "Volume calculation is only supported for 3D meshes, "
+                       "but got %dD mesh\n",
+                       mesh.dim());
+  const auto coords = mesh.coords();
+  const auto elems2nodes = mesh.ask_down(o::REGION, o::VERT).ab2b;
+  const auto n_elems = mesh.nelems();
+  o::Real total_volume = 0.0;
+
+  Kokkos::parallel_reduce(
+      n_elems,
+      KOKKOS_LAMBDA(const int i, o::Real &local_volume) {
+        auto elem_nodes = o::gather_verts<4>(elems2nodes, i);
+        o::Few<o::Vector<3>, 4> elem_coords;
+        elem_coords = o::gather_vectors<4, 3>(coords, elem_nodes);
+        o::Real elem_volume = volume_tet(elem_coords);
+        local_volume += elem_volume;
+      },
+      Kokkos::Sum<o::Real>(total_volume));
+
+  return total_volume;
+}
+
+void distributeParticlesBasesOnVolume(Omega_h::Mesh &mesh,
+                                      pumiinopenmc::PPPS::kkLidView ppe,
+                                      const int numPtcls) {
+  OMEGA_H_CHECK_PRINTF(mesh.dim() == 3,
+                       "Distributing particles based on volume is only "
+                       "supported for 3D meshes, but got %dD mesh\n",
+                       mesh.dim());
+  o::LO ne = mesh.nelems();
+  o::Real mesh_volume = volume_of_3d_mesh(mesh);
+  OMEGA_H_CHECK(mesh_volume > 0.0);
+
+  auto coords = mesh.coords();
+  auto element2nodes = mesh.ask_down(o::REGION, o::VERT).ab2b;
+
+  auto distribute_based_on_volume = OMEGA_H_LAMBDA(o::LO e) {
+    auto verts = o::gather_verts<4>(element2nodes, e);
+    auto vert_coords = o::gather_vectors<4, 3>(coords, verts);
+    o::Real vol = volume_tet(vert_coords);
+#ifdef DEBUG
+    OMEGA_H_CHECK(area > 0.0);
+#endif
+    o::Real volume_fraction = vol / mesh_volume;
+    ppe[e] = std::round(numPtcls * volume_fraction);
+  };
+  o::parallel_for(ne, distribute_based_on_volume);
+
+  Omega_h::LO totPtcls = 0;
+  Kokkos::parallel_reduce(
+      ppe.size(),
+      OMEGA_H_LAMBDA(const int i, Omega_h::LO &lsum) { lsum += ppe[i]; },
+      totPtcls);
+
+  // remove or add particles to match the total number of particles
+  int extra_particles = numPtcls - totPtcls;
+  // go throught the first extra_particles elements and add/remove one particle
+  OMEGA_H_CHECK_PRINTF(extra_particles <= mesh.nelems(),
+                       "Extra particles (%d) should be less than or equal to "
+                       "number of elements (%d)\n",
+                       extra_particles, mesh.nelems());
+
+  int add_remove = (extra_particles > 0) ? 1 : -1;
+  auto add_or_remove_particles = OMEGA_H_LAMBDA(o::LO e) {
+    ppe[e] += add_remove;
+  };
+  o::parallel_for(std::abs(extra_particles), add_or_remove_particles);
+}
+
+OMEGA_H_DEVICE o::Few<o::Vector<3>, 3>
+barycentric_basis(const o::Few<o::Vector<2>, 3> &tri_verts) {
+  o::Few<o::Vector<3>, 3> basis;
+  for (int i = 0; i < 3; i++) {
+    basis[0][i] = tri_verts[i][0];
+    basis[1][i] = tri_verts[i][1];
+    basis[2][i] = 1.0;
+  }
+  return basis;
+}
+
+OMEGA_H_DEVICE o::Few<o::Vector<4>, 4>
+barycentric_basis(const o::Few<o::Vector<3>, 4> &tet_verts) {
+  o::Few<o::Vector<4>, 4> basis;
+  for (int i = 0; i < 4; ++i) {
+    basis[0][i] = tet_verts[i][0];
+    basis[1][i] = tet_verts[i][1];
+    basis[2][i] = tet_verts[i][2];
+    basis[3][i] = 1.0;
+  }
+  return basis;
+}
+
+OMEGA_H_DEVICE o::Vector<3>
+barycentric2real(const o::Few<o::Vector<3>, 4> &tet_verts,
+                 const o::Vector<4> &bary) {
+  o::Few<o::Vector<4>, 4> basis = barycentric_basis(tet_verts);
+  o::Vector<3> real_coords;
+  // real_coords = basis * bary;
+  real_coords[0] = basis[0][0] * bary[0] + basis[1][0] * bary[1] +
+                   basis[2][0] * bary[2] + basis[3][0] * bary[3];
+  real_coords[1] = basis[0][1] * bary[0] + basis[1][1] * bary[1] +
+                   basis[2][1] * bary[2] + basis[3][1] * bary[3];
+  real_coords[2] = basis[0][2] * bary[0] + basis[1][2] * bary[1] +
+                   basis[2][2] * bary[2] + basis[3][2] * bary[3];
+
+  return real_coords;
+}
+
+void initialize_uniform_source(Omega_h::Mesh &mesh,
+                               Omega_h::Write<Omega_h::Real> particle_positions,
+                               pumiinopenmc::PPPS::kkLidView ppe) {
+  int dim = mesh.dim();
+  OMEGA_H_CHECK(dim == 3);
+
+  // cumulative sum of particles per element
+  Omega_h::Write<Omega_h::LO> cumulative_particles(mesh.nelems() + 1, 0);
+  Omega_h::LO num_particles_cumsum = 0;
+  auto calculate_cumulative_number_of_particles =
+      KOKKOS_LAMBDA(const int &e, Omega_h::LO &cumulative, bool is_final) {
+    auto num_particles = ppe[e];
+    cumulative += num_particles;
+    if (is_final) {
+      cumulative_particles[e + 1] = cumulative;
+    }
+  };
+  Kokkos::parallel_scan("calculate_cumulative_number_of_particles",
+                        mesh.nelems(), calculate_cumulative_number_of_particles,
+                        num_particles_cumsum);
+
+  OMEGA_H_CHECK_PRINTF(num_particles_cumsum == particle_positions.size() / 3,
+                       "Total number of particles (%ld) does not match "
+                       "cumulative particles (%ld)\n",
+                       particle_positions.size() / 3, num_particles_cumsum);
+
+  const auto cells2nodes = mesh.ask_down(o::REGION, o::VERT).ab2b;
+  const auto coords = mesh.coords();
+
+  Kokkos::Random_XorShift64_Pool<Kokkos::DefaultExecutionSpace> random_pool;
+  auto set_initial_positions = OMEGA_H_LAMBDA(const int &e) {
+    auto pid_start = cumulative_particles[e];
+    auto pid_end = cumulative_particles[e + 1];
+    auto num_particles_in_element = pid_end - pid_start;
+    OMEGA_H_CHECK(num_particles_in_element >= 0);
+
+    for (Omega_h::LO pid = pid_start; pid < pid_end; ++pid) {
+      auto gen = random_pool.get_state();
+      o::Vector<4> random_bcc{0.0, 0.0, 0.0, 0.0};
+      random_bcc[0] = gen.drand(0.0, 1.0);
+      random_bcc[1] = gen.drand(0.0, 1.0);
+      random_bcc[2] = gen.drand(0.0, 1.0);
+      o::Real complimentary0 = 1.0 - random_bcc[0];
+      o::Real complimentary1 = 1.0 - random_bcc[1];
+      o::Real complimentary2 = 1.0 - random_bcc[2];
+
+      bool more_than_one = random_bcc[0] + random_bcc[1] + random_bcc[2] > 1.0;
+      random_bcc[0] = more_than_one ? complimentary0 : random_bcc[0];
+      random_bcc[1] = more_than_one ? complimentary1 : random_bcc[1];
+      random_bcc[2] = more_than_one ? complimentary2 : random_bcc[2];
+      random_bcc[2] = 1.0 - random_bcc[0] - random_bcc[1] - random_bcc[2];
+      random_pool.free_state(gen);
+
+      auto verts = o::gather_verts<4>(cells2nodes, e);
+      auto vert_coords = o::gather_vectors<4, 3>(coords, verts);
+
+      auto real_loc = barycentric2real(vert_coords, random_bcc);
+
+      particle_positions[pid * 3 + 0] = real_loc[0];
+      particle_positions[pid * 3 + 1] = real_loc[1];
+      particle_positions[pid * 3 + 2] = real_loc[2];
+    }
+  };
+  o::parallel_for(mesh.nelems(), set_initial_positions);
 }
 
 } // namespace pumiinopenmc

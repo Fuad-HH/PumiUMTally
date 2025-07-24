@@ -13,15 +13,12 @@
 
 // ******************************************* Helper Functions
 // ******************************************* //
-enum class SourceDistribution {
-  UNIFORM, // Source uniformly distributed across the mesh
-  EQUAL    // Source at centroids of each element
-};
 struct InputParameters {
   std::string mesh_name;
   int num_particles = 0;
   int max_iterations = 1000;
-  SourceDistribution source_distribution = SourceDistribution::EQUAL;
+  pumiinopenmc::SourceDistribution source_distribution =
+      pumiinopenmc::SourceDistribution::EQUAL;
 };
 void read_input_parameters(int argc, char *const *argv,
                            InputParameters &params);
@@ -30,7 +27,6 @@ void print_initial_info(const std::string &mesh_name,
 // computes centroids of each element in the mesh and stores them in a tag
 void get_centroids(Omega_h::Mesh &mesh,
                    Omega_h::Write<Omega_h::Real> centroids);
-
 template <typename T>
 void vector2write(const std::vector<T> &vec, Omega_h::Write<T> &write_vec) {
   Omega_h::HostWrite<T> host_write_vec(vec.size());
@@ -49,9 +45,9 @@ struct Fields {
 };
 void get_field_values(Omega_h::Reals centroids, Fields &fields);
 void set_field_values_to_mesh(Omega_h::Mesh &mesh, const Fields &fields);
-void set_source_particles(Omega_h::Mesh &mesh,
-                          SourceDistribution source_distribution,
-                          Omega_h::Write<Omega_h::Real> particle_positions);
+// void set_source_particles(Omega_h::Mesh &mesh,
+//                         SourceDistribution source_distribution,
+//                           Omega_h::Write<Omega_h::Real> particle_positions);
 void transport(pumiinopenmc::PumiTallyImpl &pumi_tally, DG2Physics &physics,
                const Omega_h::Read<Omega_h::Real> &electron_density,
                const Omega_h::Read<Omega_h::Real> ion_density,
@@ -79,6 +75,7 @@ int main(int argc, char *argv[]) {
   Fields fields;
   get_field_values(Omega_h::Reals(centroids), fields);
   set_field_values_to_mesh(mesh, fields);
+  pumi_tally.is_pumipic_initialized = true;
 
   Kokkos::View<Omega_h::Real ***> sigma_t_;            // mat, T, g
   Kokkos::View<Omega_h::Real ***> sigma_a_;            // mat, T, g
@@ -87,14 +84,6 @@ int main(int argc, char *argv[]) {
   DG2CrossSection crossSection(sigma_t_, sigma_a_, scattering_matrix_,
                                sigma_s_);
   DG2Physics physics(crossSection, input_params.num_particles);
-
-  // Initialize particles
-  Omega_h::Write<Omega_h::Real> particle_positions(pumi_tally.pumi_ps_size * 3,
-                                                   "particle_positions");
-  set_source_particles(mesh, input_params.source_distribution,
-                       particle_positions);
-  pumi_tally.device_pos_buffer_ = particle_positions;
-  pumi_tally.search_initial_elements();
 
   // Move particles
   auto electron_density =
@@ -215,17 +204,23 @@ void initialize_equal_source(const Omega_h::Mesh &mesh,
   Kokkos::fence();
 }
 
+/*
 void set_source_particles(Omega_h::Mesh &mesh,
                           const SourceDistribution source_distribution,
                           Omega_h::Write<Omega_h::Real> particle_positions) {
   OMEGA_H_CHECK_PRINTF(particle_positions.size() > 0,
                        "Particle positions size (%ld) must be greater than 0\n",
                        particle_positions.size());
+  Omega_h::LO num_particles = particle_positions.size() / 3;
 
   switch (source_distribution) {
-  case SourceDistribution::UNIFORM:
-    throw std::runtime_error("Uniform distribution is not implemented yet.");
-    break;
+      case SourceDistribution::UNIFORM: {
+          auto ppe = pumiinopenmc::PPPS::kkLidView("ptcls_per_element",
+                                                   mesh.nelems());
+          distributeParticlesBasesOnVolume(mesh, ppe, num_particles);
+          initialize_uniform_source(mesh, particle_positions, ppe);
+          break;
+      }
   case SourceDistribution::EQUAL: {
     initialize_equal_source(mesh, particle_positions);
 
@@ -235,6 +230,7 @@ void set_source_particles(Omega_h::Mesh &mesh,
     throw std::runtime_error("Unsupported source distribution!\n");
   }
 }
+*/
 
 void set_field_values_to_mesh(Omega_h::Mesh &mesh, const Fields &fields) {
   OMEGA_H_CHECK_PRINTF(fields.electron_temperature.size() == mesh.nelems(),
@@ -355,9 +351,9 @@ void read_input_parameters(int argc, char *const *argv,
   std::string source_dist_str = argv[4];
   // FIXME: hardcoded lower case
   if (source_dist_str == "uniform") {
-    params.source_distribution = SourceDistribution::UNIFORM;
+    params.source_distribution = pumiinopenmc::SourceDistribution::UNIFORM;
   } else if (source_dist_str == "equal") {
-    params.source_distribution = SourceDistribution::EQUAL;
+    params.source_distribution = pumiinopenmc::SourceDistribution::EQUAL;
   } else {
     throw std::runtime_error(
         "Invalid source distribution. Use 'uniform' or 'equal'.");
