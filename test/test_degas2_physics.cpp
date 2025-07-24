@@ -38,7 +38,6 @@ TEST_CASE("Test Degas2 Physics Functions"){
           particles(i).energy_group = energy;
           particles(i).weight = 1.0;
 		  particles(i).particle_index = i;
-		  particles(i).alpha = 1.0;
 
           fields(i).electron_density = 1.0e13;
           fields(i).ion_density = 1.0e13;
@@ -112,8 +111,8 @@ TEST_CASE("Test Degas2 Physics Functions"){
 		outfile << output(i).direction[2] << std::endl;
 	}
 	*/
-  	REQUIRE_THAT(l, Catch::Matchers::WithinAbs(2.40,.04));
-  	REQUIRE_THAT(sdl, Catch::Matchers::WithinAbs(2.40,.04));
+  	REQUIRE_THAT(l, Catch::Matchers::WithinAbs(2.40,.03));
+  	REQUIRE_THAT(sdl, Catch::Matchers::WithinAbs(2.40,.03));
   	REQUIRE_THAT(ux, Catch::Matchers::WithinAbs(0.0,.03));
   	REQUIRE_THAT(sdux, Catch::Matchers::WithinAbs(0.577,.03));
   }
