@@ -97,6 +97,7 @@ public:
   Omega_h::Write<Omega_h::Real> total_tracklength_;
   Omega_h::Write<int> material_ids_;
   Omega_h::Write<Omega_h::LO> last_exit_;
+  Omega_h::Write<Omega_h::Real> alpha_;
 };
 // ------------------------------------------------------------------------------------------------//
 

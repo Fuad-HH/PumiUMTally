@@ -545,7 +545,8 @@ PumiParticleAtElemBoundary::PumiParticleAtElemBoundary(size_t nelems,
                                                        size_t capacity)
     : prev_xpoint_(capacity * 3, 0.0, "prev_xpoint"),
       material_ids_(capacity, -1, "material_ids"),
-      total_tracklength_(capacity, 0.0, "total_tracklength"), initial_(true) {
+      total_tracklength_(capacity, 0.0, "total_tracklength"), initial_(true),
+      alpha_(capacity, 0.0, "alpha") {
   initialize_flux_array(nelems, 2); // FIXME: hardcoded 2 groups
   printf("[INFO] Particle handler at boundary with %d elements and %d "
          "x points size (3 * n_particles)\n",
@@ -647,7 +648,7 @@ void PumiParticleAtElemBoundary::evaluateFlux(
                orig[0], orig[1], orig[2], dest[0], dest[1], dest[2]);
       }
 
-      Omega_h::Real contribution = segment_length * p_wgt(pid);
+      Omega_h::Real contribution = segment_length * p_wgt(pid) * alpha_[pid];
 
       int group = p_groups(pid);
       OMEGA_H_CHECK_PRINTF(

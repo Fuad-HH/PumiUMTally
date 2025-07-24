@@ -135,6 +135,7 @@ void transport(pumiinopenmc::PumiTallyImpl &pumi_tally, DG2Physics &physics,
 
     auto last_exit =
         pumi_tally.p_pumi_particle_at_elem_boundary_handler->last_exit_;
+    auto alpha = pumi_tally.p_pumi_particle_at_elem_boundary_handler->alpha_;
     auto get_new_destination =
         PS_LAMBDA(const int &e, const int &pid, const int &mask) {
       if (mask > 0) { // FIXME: check if the particle is at destination or at
@@ -174,6 +175,8 @@ void transport(pumiinopenmc::PumiTallyImpl &pumi_tally, DG2Physics &physics,
         particle_dest(pid, 2) = particle_info.position[2];
         particle_weight(pid) = particle_info.weight;
         particle_group(pid) = particle_info.energy_group;
+
+        alpha[pid] = particle_info.alpha;
       }
     };
     pumipic::parallel_for(pumi_tally.pumipic_ptcls.get(), get_new_destination,
