@@ -7,6 +7,8 @@
 #include <iostream>
 #include <stdexcept>
 #include <vector>
+#include <fstream>
+#include <cstdlib>
 
 #include "DG2Physics.h"
 #include "pumitally_impl.tpp"
@@ -311,6 +313,9 @@ void get_centroids(Omega_h::Mesh &mesh,
 }
 
 // TODO: Implement the function to retrieve field values based on centroids
+// NOTE: This requires the python script and the plasma source mesh and data
+// to be in the folder with this cpp file. The python script may need to be
+// updated to read in different plasma source data.
 void get_field_values(Omega_h::Reals centroids, Fields &fields) {
   auto centroids_h = Omega_h::HostRead<Omega_h::Real>(centroids);
 
@@ -326,6 +331,38 @@ void get_field_values(Omega_h::Reals centroids, Fields &fields) {
   fields.bulk_flow_velocity.resize(num_elements, 0.0);
 
   // TODO: Add your code here to retrieve the actual field values
+  // Write centroid coords to CSV to be read by python script
+  std::ofstream coords("centroid_coords.csv");
+  for (int j = 0; j < (centroids_h.size() / 3); j++) {
+    coords << j << "," << centroids_h[j*3 + 0] << "," << centroids_h[j*3 + 1] << "," << centroids_h[j*3 + 2] << std::endl;
+  }
+  coords.close();
+
+  // Run the python script
+  system("python Mesh_Map.py");
+
+  // Read in the field values
+  std::ifstream fieldvals{"vals.csv"};
+  int i = 0;
+  std::string IDString;
+  std::string xxString;
+  std::string yyString;
+  std::string zzString;
+
+  while (std::getline(fieldvals, IDString, ',')) {
+
+    std::getline(fieldvals,xxString, ',');
+    std::getline(fieldvals,yyString, ',');
+    std::getline(fieldvals,zzString, '\n');
+
+    // Asign field values
+    fields.ion_density[i] = std::stod(xxString);
+    fields.electron_density[i] = std::stod(xxString);
+    fields.electron_temperature[i] = std::stod(yyString);
+    fields.ion_temperature[i] = std::stod(zzString);
+
+    i++;
+  }
 }
 
 void print_initial_info(const std::string &mesh_name,
