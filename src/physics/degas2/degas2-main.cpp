@@ -4,11 +4,11 @@
  * PUMI-Tally interface
  */
 
+#include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <vector>
-#include <fstream>
-#include <cstdlib>
 
 #include "DG2Physics.h"
 #include "pumitally_impl.tpp"
@@ -29,6 +29,8 @@ void print_initial_info(const std::string &mesh_name,
 // computes centroids of each element in the mesh and stores them in a tag
 void get_centroids(Omega_h::Mesh &mesh,
                    Omega_h::Write<Omega_h::Real> centroids);
+void sample_initial_particle_energy(Kokkos::View<double *> energy_array);
+
 template <typename T>
 void vector2write(const std::vector<T> &vec, Omega_h::Write<T> &write_vec) {
   Omega_h::HostWrite<T> host_write_vec(vec.size());
@@ -86,6 +88,7 @@ int main(int argc, char *argv[]) {
   DG2CrossSection crossSection(sigma_t_, sigma_a_, scattering_matrix_,
                                sigma_s_);
   DG2Physics physics(crossSection, input_params.num_particles);
+  sample_initial_particle_energy(physics.particle_energy);
 
   // Move particles
   auto electron_density =
@@ -330,7 +333,9 @@ void get_field_values(Omega_h::Reals centroids, Fields &fields) {
   // Write centroid coords to CSV to be read by python script
   std::ofstream coords("centroid_coords.csv");
   for (int j = 0; j < (centroids_h.size() / 3); j++) {
-    coords << j << "," << centroids_h[j*3 + 0] << "," << centroids_h[j*3 + 1] << "," << centroids_h[j*3 + 2] << std::endl;
+    coords << j << "," << centroids_h[j * 3 + 0] << ","
+           << centroids_h[j * 3 + 1] << "," << centroids_h[j * 3 + 2]
+           << std::endl;
   }
   coords.close();
 
@@ -347,9 +352,9 @@ void get_field_values(Omega_h::Reals centroids, Fields &fields) {
 
   while (std::getline(fieldvals, IDString, ',')) {
 
-    std::getline(fieldvals,xxString, ',');
-    std::getline(fieldvals,yyString, ',');
-    std::getline(fieldvals,zzString, '\n');
+    std::getline(fieldvals, xxString, ',');
+    std::getline(fieldvals, yyString, ',');
+    std::getline(fieldvals, zzString, '\n');
 
     // Asign field values
     fields.ion_density[i] = std::stod(xxString);
@@ -395,4 +400,64 @@ void read_input_parameters(int argc, char *const *argv,
     throw std::runtime_error(
         "Invalid source distribution. Use 'uniform' or 'equal'.");
   }
+}
+
+void sample_initial_particle_energy(Kokkos::View<double *> energy_array) {
+  random_pool_t randomPool;
+
+  auto sample_energy = OMEGA_H_LAMBDA(int i) {
+    // Basically, feed this 4 uniformly generated random numbers, x1, x2, y1,
+    // y2, on the interval (0,1) and it
+    // will give you a velocity vector (vx,vy,vz), a unit direction vector
+    // (directionx, directiony, directionz), the alpha value used in the tally,
+    // and the energy of the particle that was sampled. All from a gas at
+    // temperature temp.
+
+    double mp{938.27e6 / (3e10 * 3e10)}; // eV/c^2 = eV*s^2/cm^2. Necessary
+                                         // constant for the distribution
+
+    // This is what we set as the source temperature. This could in principle be
+    // a parameter but for now can be hard coded in as 3 eV or so and I can
+    // always tweak it.
+    double temp = 3; // eV.
+
+    // This uses the Box-Muller method of sampling a Gaussian, which generates
+    // two independent normally distributed values from two independent
+    // uniformly distributed numbers on the interval (0,1). (x1, x2) is the
+    // first pair. (y1, y2) is the second pair. Note this technically could make
+    //4 independent normally distributed values, but we only need three. This
+    // generates a velocity vector (vx,vy,vz) sampled from an ideal gas at
+    // temperature temp.
+    auto generator = randomPool.get_state();
+    auto x1 = generator.drand(0.0, 1.0);
+    auto x2 = generator.drand(0.0, 1.0);
+    auto y1 = generator.drand(0.0, 1.0);
+    auto y2 = generator.drand(0.0, 1.0);
+    randomPool.free_state(generator);
+    auto vx = Kokkos::sqrt(temp / mp) * Kokkos::sqrt(-2 * Kokkos::log(x1)) *
+              Kokkos::cos(2 * M_PI * x2);
+    auto vy = Kokkos::sqrt(temp / mp) * Kokkos::sqrt(-2 * Kokkos::log(x1)) *
+              Kokkos::sin(2 * M_PI * x2);
+    auto vz = Kokkos::sqrt(temp / mp) * Kokkos::sqrt(-2 * Kokkos::log(y1)) *
+              Kokkos::sin(2 * M_PI * y2);
+
+    // Compute the magnitude of the velocity vector
+    auto mag_v = Kokkos::sqrt(vx * vx + vy * vy + vz * vz);
+
+    // Compute the alpha factor multiplied in when computing the tally
+    double alpha = 1 / mag_v;
+
+    // Compute the unit normal
+    double directionx = vx / mag_v;
+    double directiony = vy / mag_v;
+    double directionz = vz / mag_v;
+
+    // Compute the particle energy. This you will want to save probably to pass
+    // to my initialization (set_energy) code so that I have the energy for my
+    // computations.
+    double particle_energy = 0.5 * mp * mag_v * mag_v;
+    energy_array(i) = particle_energy;
+  };
+  Kokkos::parallel_for("sample_initial_particle_energy", energy_array.size(),
+                       sample_energy);
 }
