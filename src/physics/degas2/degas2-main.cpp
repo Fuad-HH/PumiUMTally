@@ -72,7 +72,7 @@ int main(int argc, char *argv[]) {
 
   // Initialize PUMI-Tally and Read Fields
   auto pumi_tally = pumiinopenmc::PumiTallyImpl(
-      input_params.mesh_name, input_params.num_particles, argc, argv);
+      input_params.mesh_name, input_params.num_particles, argc, argv, input_params.source_distribution);
   auto &mesh = pumi_tally.full_mesh_;
   Omega_h::Write<Omega_h::Real> centroids(mesh.nelems() * 3);
   get_centroids(mesh, centroids);
@@ -135,11 +135,14 @@ void transport(pumiinopenmc::PumiTallyImpl &pumi_tally, DG2Physics &physics,
 
     auto last_exit =
         pumi_tally.p_pumi_particle_at_elem_boundary_handler->last_exit_;
+    
     auto alpha = pumi_tally.p_pumi_particle_at_elem_boundary_handler->alpha_;
     auto get_new_destination =
         PS_LAMBDA(const int &e, const int &pid, const int &mask) {
+	
       if (mask > 0) { // FIXME: check if the particle is at destination or at
                       // the boundary
+		      //
         ParticleInfo particle_info;
         particle_info.position[0] = particle_dest(pid, 0);
         particle_info.position[1] = particle_dest(pid, 1);
@@ -177,6 +180,7 @@ void transport(pumiinopenmc::PumiTallyImpl &pumi_tally, DG2Physics &physics,
         particle_group(pid) = particle_info.energy_group;
 
         alpha[pid] = particle_info.alpha;
+	
       }
     };
     pumipic::parallel_for(pumi_tally.pumipic_ptcls.get(), get_new_destination,
@@ -411,8 +415,7 @@ void read_input_parameters(int argc, char *const *argv,
 }
 
 void sample_initial_particle_energy(Kokkos::View<double *> energy_array) {
-  random_pool_t randomPool;
-
+  random_pool_t randomPool(0);
   auto sample_energy = OMEGA_H_LAMBDA(int i) {
     // Basically, feed this 4 uniformly generated random numbers, x1, x2, y1,
     // y2, on the interval (0,1) and it
@@ -420,7 +423,6 @@ void sample_initial_particle_energy(Kokkos::View<double *> energy_array) {
     // (directionx, directiony, directionz), the alpha value used in the tally,
     // and the energy of the particle that was sampled. All from a gas at
     // temperature temp.
-
     double mp{938.27e6 / (3e10 * 3e10)}; // eV/c^2 = eV*s^2/cm^2. Necessary
                                          // constant for the distribution
 
@@ -465,6 +467,8 @@ void sample_initial_particle_energy(Kokkos::View<double *> energy_array) {
     // computations.
     double particle_energy = 0.5 * mp * mag_v * mag_v;
     energy_array(i) = particle_energy;
+
+    
   };
   Kokkos::parallel_for("sample_initial_particle_energy", energy_array.size(),
                        sample_energy);
