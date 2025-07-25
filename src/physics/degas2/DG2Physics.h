@@ -155,6 +155,9 @@ public:
     particle_info.position[0] += l*particle_info.direction[0];
     particle_info.position[1] += l*particle_info.direction[1];
     particle_info.position[2] += l*particle_info.direction[2];
+
+	double mp {938.27e6/(3e10*3e10)}; //eV/c^2 = eV*s^2/cm^2
+	particle_info.alpha = Kokkos::sqrt(mp/(2.0*particle_energy(particle_info.particle_index)));
   }
 
   // collision event
@@ -231,6 +234,9 @@ public:
         }
     }
 	particle_info.weight = new_weight;
+
+	//This definition may be redundant since it is also in the next location function
+	particle_info.alpha = Kokkos::sqrt(mp/(2.0*particle_energy(particle_info.particle_index)));
 	random_pool.free_state(rand_gen);
 
 
