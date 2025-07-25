@@ -238,9 +238,7 @@ public:
 	//This definition may be redundant since it is also in the next location function
 	particle_info.alpha = Kokkos::sqrt(mp/(2.0*particle_energy(particle_info.particle_index)));
 	random_pool.free_state(rand_gen);
-
-
-}
+  }
 //To here
   random_pool_t random_pool;
   DG2CrossSection cross_section;
