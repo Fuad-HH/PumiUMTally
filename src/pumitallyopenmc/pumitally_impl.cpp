@@ -592,31 +592,21 @@ void PumiParticleAtElemBoundary::updatePrevXPoint(
 void PumiParticleAtElemBoundary::updatePrevXPoint(PPPS *ptcls) {
   // todo add checks of size
   auto prev_xpoints_l = prev_xpoint_;
-  printf("\n Size of previous xpoints %d\n", prev_xpoints_l.size());
-  printf("\nNumber of particles: %d\n", ptcls->nPtcls());
   OMEGA_H_CHECK_PRINTF(
       ptcls->capacity() * 3 == prev_xpoints_l.size(),
       "Error: prev_xpoints_s are not size properly capacity %d size %d\n",
       ptcls->capacity(), prev_xpoints_l.size());
-  printf("\n Omega_h Check Ran \n");
   auto xpoints = ptcls->get<0>();
-  printf("\n** xpoints defined **\n");
   auto update = PS_LAMBDA(const auto &e, const auto &pid, const auto &mask) {
-	  printf("\n** Inside lambda ** \n");
 	  if (mask>0 && pid<10) {	
 	  
-	  printf("\n ***Copying xpoints***\n");
     prev_xpoints_l[pid * 3 + 0] = xpoints(pid, 0);
     prev_xpoints_l[pid * 3 + 1] = xpoints(pid, 1);
     prev_xpoints_l[pid * 3 + 2] = xpoints(pid, 2);
 	  }
   };
-  printf("\n ** After the loop ** \n");
   pumipic::parallel_for(ptcls, update,
-                        "update previous xpoints from origin points");
-  printf("\nBefore fence \n");
-  Kokkos::fence();
-  printf("\n after fence \n");
+                       "update previous xpoints from origin points");
 }
 
 void PumiParticleAtElemBoundary::evaluateFlux(
@@ -958,16 +948,16 @@ void PumiTallyImpl::create_and_initialize_pumi_particle_structure(
         init_loc(pid, 0) = device_pos_buffer_l[pid * 3 + 0];
         init_loc(pid, 1) = device_pos_buffer_l[pid * 3 + 1];
         init_loc(pid, 2) = device_pos_buffer_l[pid * 3 + 2];
-	if (pid < 10){
-		printf("\n PID %d in element %d: (%f, %f, %f)\n",pid, e, init_loc(pid,0), init_loc(pid,1), init_loc(pid,2));
-	}	
+//	if (pid < 10){
+//		printf("\n PID %d in element %d: (%f, %f, %f)\n",pid, e, init_loc(pid,0), init_loc(pid,1), init_loc(pid,2));
+//	}	
       }
     };
     pumipic::parallel_for(pumipic_ptcls.get(), copy_initial_positions,
                           "copy initial positions from device buffer");
   }
   if (source_dist == SourceDistribution::ZERO) {
-	  printf("\**nSource Distribution 0**\n");
+	  printf("\n**Source Distribution 0**\n");
     start_pumi_particles_in_0th_element(*mesh, pumipic_ptcls.get());
   }
   p_pumi_particle_at_elem_boundary_handler =

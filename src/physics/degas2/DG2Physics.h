@@ -151,7 +151,7 @@ public:
 	double sigma_cx = charge_exchange_cross_section(particle_info, field_info);
 
 	//Generate distance and move particle
-    double l =-Kokkos::log(x)/(field_info.electron_density*sigma_ion+field_info.ion_density*sigma_cx); //cm. n in cm^-3
+    double l =-Kokkos::log(x)/(field_info.electron_density*sigma_ion+field_info.ion_density*sigma_cx)*0.01; //m. n in cm^-3
     particle_info.position[0] += l*particle_info.direction[0];
     particle_info.position[1] += l*particle_info.direction[1];
     particle_info.position[2] += l*particle_info.direction[2];
@@ -176,12 +176,12 @@ public:
 	//Compute 3 Maxwellian (Gaussian) distributed velocities (cm/s)
 	double mp {938.27e6/(3e10*3e10)}; //eV/c^2 = eV*s^2/cm^2
 	double max_sigma_cx = 3.8e-14;
-
+	
 	bool rejection_test = false;
     auto old_mag_v = Kokkos::sqrt(2*particle_energy(particle_info.particle_index)/mp);
-    double vx;
-    double vy;
-    double vz;
+    double vx {};
+    double vy {};
+    double vz {};
     //Loops this until it passes the rejection test
     while (!rejection_test) {
     	//Generate random numbers for the velocity
@@ -213,7 +213,7 @@ public:
 	particle_info.direction[0] = vx/mag_v;
 	particle_info.direction[1] = vy/mag_v;
 	particle_info.direction[2] = vz/mag_v;
-
+	
 	particle_energy(particle_info.particle_index) = 0.5*mp*mag_v*mag_v;
 	//particle_info.energy_group = particle_energy(particle_info.particle_index); //Temporary for debugging
 	//Adjust Weights

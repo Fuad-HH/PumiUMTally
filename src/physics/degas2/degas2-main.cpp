@@ -166,12 +166,17 @@ void transport(pumiinopenmc::PumiTallyImpl &pumi_tally, DG2Physics &physics,
         field_info.bulk_flow_velocity[0] = bulk_flow_velocity[e * 3 + 0];
         field_info.bulk_flow_velocity[1] = bulk_flow_velocity[e * 3 + 1];
         field_info.bulk_flow_velocity[2] = bulk_flow_velocity[e * 3 + 2];
-
-        if (last_exit[pid] == -1) { // reached destination
-          physics.collide_particle(particle_info, field_info);
-        }
+	
+        if (iter != 0) { //Ensure last_exit[pid] doesn't run the first time
+          if (last_exit[pid] == -1) { // reached destination
+            physics.collide_particle(particle_info, field_info);
+          }
+	}
+	else {
+	  physics.collide_particle(particle_info, field_info);
+	}
         physics.sample_collision_distance(particle_info, field_info);
-
+	
         // Update particle position and direction
         particle_dest(pid, 0) = particle_info.position[0];
         particle_dest(pid, 1) = particle_info.position[1];
@@ -180,12 +185,11 @@ void transport(pumiinopenmc::PumiTallyImpl &pumi_tally, DG2Physics &physics,
         particle_group(pid) = particle_info.energy_group;
 
         alpha[pid] = particle_info.alpha;
-	
+	printf("\n#### PID: %d, iter: %d, at position (%f,%f,%f)  ####\n", pid, iter, particle_info.position[0], particle_info.position[1], particle_info.position[2]);
       }
     };
     pumipic::parallel_for(pumi_tally.pumipic_ptcls.get(), get_new_destination,
                           "get new destination");
-
     pumi_tally.search_and_rebuild(
         false, true); // for now, always rebuild the pp structure
     Kokkos::fence();
