@@ -136,21 +136,23 @@ void transport(pumiinopenmc::PumiTallyImpl &pumi_tally, DG2Physics &physics,
     auto last_exit =
         pumi_tally.p_pumi_particle_at_elem_boundary_handler->last_exit_;
     
+	printf("\n### iter = %d  ###\n",iter);
+
     auto alpha = pumi_tally.p_pumi_particle_at_elem_boundary_handler->alpha_;
     auto get_new_destination =
         PS_LAMBDA(const int &e, const int &pid, const int &mask) {
-	
+
       if (mask > 0) { // FIXME: check if the particle is at destination or at
                       // the boundary
 		      //
         ParticleInfo particle_info;
-        particle_info.position[0] = particle_dest(pid, 0);
-        particle_info.position[1] = particle_dest(pid, 1);
-        particle_info.position[2] = particle_dest(pid, 2);
+        particle_info.position[0] = particle_orig(pid, 0);
+        particle_info.position[1] = particle_orig(pid, 1);
+        particle_info.position[2] = particle_orig(pid, 2);
         auto direction = Omega_h::normalize(Omega_h::Vector<3>{
-            particle_info.position[0] - particle_orig(pid, 0),
-            particle_info.position[1] - particle_orig(pid, 1),
-            particle_info.position[2] - particle_orig(pid, 2)});
+            particle_info.position[0] - particle_dest(pid, 0),
+            particle_info.position[1] - particle_dest(pid, 1),
+            particle_info.position[2] - particle_dest(pid, 2)});
         particle_info.direction[0] = direction[0];
         particle_info.direction[1] = direction[1];
         particle_info.direction[2] = direction[2];
@@ -167,6 +169,10 @@ void transport(pumiinopenmc::PumiTallyImpl &pumi_tally, DG2Physics &physics,
         field_info.bulk_flow_velocity[1] = bulk_flow_velocity[e * 3 + 1];
         field_info.bulk_flow_velocity[2] = bulk_flow_velocity[e * 3 + 2];
 	
+	
+//	printf("\n---- Direction (pid = %d) before collision: (%f, %f, %f). Original pos: (%f, %f, %f), pos (%f, %f, %f)  ---- \n", pid, direction[0], direction[1], direction[2], 
+//			particle_orig(pid,0), particle_orig(pid,1), particle_orig(pid,2), particle_info.position[0], particle_info.position[1], particle_info.position[2]);
+
         if (iter != 0) { //Ensure last_exit[pid] doesn't run the first time
           if (last_exit[pid] == -1) { // reached destination
             physics.collide_particle(particle_info, field_info);
@@ -185,7 +191,8 @@ void transport(pumiinopenmc::PumiTallyImpl &pumi_tally, DG2Physics &physics,
         particle_group(pid) = particle_info.energy_group;
 
         alpha[pid] = particle_info.alpha;
-	printf("\n#### PID: %d, iter: %d, at position (%f,%f,%f)  ####\n", pid, iter, particle_info.position[0], particle_info.position[1], particle_info.position[2]);
+//	printf("\n#### PID: %d, iter: %d, at position (%f,%f,%f). Direction was: (%f, %f, %f)  ####\n", pid, iter, particle_info.position[0],
+//		       	particle_info.position[1], particle_info.position[2], particle_info.direction[0], particle_info.direction[1], particle_info.direction[2]);
       }
     };
     pumipic::parallel_for(pumi_tally.pumipic_ptcls.get(), get_new_destination,

@@ -151,13 +151,16 @@ public:
 	double sigma_cx = charge_exchange_cross_section(particle_info, field_info);
 
 	//Generate distance and move particle
+//	printf("\n$$$ Before moving particle [%d], position: (%f, %f, %f)  $$$\n", particle_info.particle_index, particle_info.position[0], particle_info.position[1], 
+//			particle_info.position[2]);
     double l =-Kokkos::log(x)/(field_info.electron_density*sigma_ion+field_info.ion_density*sigma_cx)*0.01; //m. n in cm^-3
     particle_info.position[0] += l*particle_info.direction[0];
     particle_info.position[1] += l*particle_info.direction[1];
     particle_info.position[2] += l*particle_info.direction[2];
-
+//	printf("\n$$$ After moving particle [%d], position (%f, %f, %f). Direction was (%f, %f, %f) with l = %f  $$$\n", particle_info.particle_index, particle_info.position[0],
+//			particle_info.position[1], particle_info.position[2], particle_info.direction[0], particle_info.direction[1], particle_info.direction[2], l);
 	double mp {938.27e6/(3e10*3e10)}; //eV/c^2 = eV*s^2/cm^2
-	particle_info.alpha = Kokkos::sqrt(mp/(2.0*particle_energy(particle_info.particle_index)));
+	particle_info.alpha = Kokkos::sqrt(mp/(2.0*particle_energy(particle_info.particle_index)))*100; //1/(m/s)
   }
 
   // collision event
@@ -236,7 +239,7 @@ public:
 	particle_info.weight = new_weight;
 
 	//This definition may be redundant since it is also in the next location function
-	particle_info.alpha = Kokkos::sqrt(mp/(2.0*particle_energy(particle_info.particle_index)));
+	particle_info.alpha = Kokkos::sqrt(mp/(2.0*particle_energy(particle_info.particle_index)))*100; //1/(m/s)
 	random_pool.free_state(rand_gen);
   }
 //To here
