@@ -98,7 +98,7 @@ TEST_CASE("Test Degas2 Physics Functions"){
 	outfile << "Standard Deviation of Mean x Direction: " << sdux << std::endl; //0.579
 
 
-	outfile << "Particle #,Energy(eV),Weight,X(cm),Y(cm),Z(cm),X_Dir,Y_Dir,Z_Dir" << std::endl;
+	outfile << "Particle #,Velocity(m/s),Weight,X(cm),Y(cm),Z(cm),X_Dir,Y_Dir,Z_Dir" << std::endl;
 
 	for (int i = 0; i < numParticles; ++i) {
 		outfile << i << ",";
