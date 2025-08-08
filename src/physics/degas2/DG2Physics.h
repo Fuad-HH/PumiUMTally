@@ -206,7 +206,7 @@ public:
     	auto mag_v2 = rel_vx*rel_vx + rel_vy*rel_vy + rel_vz*rel_vz;
 
     	//Generate random number and compare to sigma/sigma_max
-    	if (rand_gen.drand(0., 1.) < mag_v2*analytic_cross_section_CE(0.5*mp*mag_v2)/max_rate_cx) {
+    	if (rand_gen.drand(0., 1.) < Kokkos::sqrt(mag_v2)*analytic_cross_section_CE(0.5*mp*mag_v2)/max_rate_cx) {
         	rejection_test = true;
         }
     }
