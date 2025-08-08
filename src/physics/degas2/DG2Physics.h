@@ -178,7 +178,7 @@ public:
 	//Compute New Direction and Energy and set particle info
 	//Compute 3 Maxwellian (Gaussian) distributed velocities (cm/s)
 	double mp {938.27e6/(3e10*3e10)}; //eV/c^2 = eV*s^2/cm^2
-	double max_sigma_cx = 3.8e-14;
+	double max_rate_cx = 1.4e-7;
 	
 	bool rejection_test = false;
     auto old_mag_v = Kokkos::sqrt(2*particle_energy(particle_info.particle_index)/mp);
@@ -206,7 +206,7 @@ public:
     	auto mag_v2 = rel_vx*rel_vx + rel_vy*rel_vy + rel_vz*rel_vz;
 
     	//Generate random number and compare to sigma/sigma_max
-    	if (rand_gen.drand(0., 1.) < analytic_cross_section_CE(0.5*mp*mag_v2)/max_sigma_cx) {
+    	if (rand_gen.drand(0., 1.) < mag_v2*analytic_cross_section_CE(0.5*mp*mag_v2)/max_rate_cx) {
         	rejection_test = true;
         }
     }
