@@ -72,7 +72,7 @@ int main(int argc, char *argv[]) {
 
   // Initialize PUMI-Tally and Read Fields
   auto pumi_tally = pumiinopenmc::PumiTallyImpl(
-      input_params.mesh_name, input_params.num_particles, argc, argv);
+      input_params.mesh_name, input_params.num_particles, argc, argv, input_params.source_distribution);
   auto &mesh = pumi_tally.full_mesh_;
   Omega_h::Write<Omega_h::Real> centroids(mesh.nelems() * 3);
   get_centroids(mesh, centroids);
@@ -135,19 +135,24 @@ void transport(pumiinopenmc::PumiTallyImpl &pumi_tally, DG2Physics &physics,
 
     auto last_exit =
         pumi_tally.p_pumi_particle_at_elem_boundary_handler->last_exit_;
+    
+	printf("\n### iter = %d  ###\n",iter);
+
     auto alpha = pumi_tally.p_pumi_particle_at_elem_boundary_handler->alpha_;
     auto get_new_destination =
         PS_LAMBDA(const int &e, const int &pid, const int &mask) {
+
       if (mask > 0) { // FIXME: check if the particle is at destination or at
                       // the boundary
+		      //
         ParticleInfo particle_info;
-        particle_info.position[0] = particle_dest(pid, 0);
-        particle_info.position[1] = particle_dest(pid, 1);
-        particle_info.position[2] = particle_dest(pid, 2);
+        particle_info.position[0] = particle_orig(pid, 0);
+        particle_info.position[1] = particle_orig(pid, 1);
+        particle_info.position[2] = particle_orig(pid, 2);
         auto direction = Omega_h::normalize(Omega_h::Vector<3>{
-            particle_info.position[0] - particle_orig(pid, 0),
-            particle_info.position[1] - particle_orig(pid, 1),
-            particle_info.position[2] - particle_orig(pid, 2)});
+            particle_info.position[0] - particle_dest(pid, 0),
+            particle_info.position[1] - particle_dest(pid, 1),
+            particle_info.position[2] - particle_dest(pid, 2)});
         particle_info.direction[0] = direction[0];
         particle_info.direction[1] = direction[1];
         particle_info.direction[2] = direction[2];
@@ -163,12 +168,21 @@ void transport(pumiinopenmc::PumiTallyImpl &pumi_tally, DG2Physics &physics,
         field_info.bulk_flow_velocity[0] = bulk_flow_velocity[e * 3 + 0];
         field_info.bulk_flow_velocity[1] = bulk_flow_velocity[e * 3 + 1];
         field_info.bulk_flow_velocity[2] = bulk_flow_velocity[e * 3 + 2];
+	
+	
+//	printf("\n---- Direction (pid = %d) before collision: (%f, %f, %f). Original pos: (%f, %f, %f), pos (%f, %f, %f)  ---- \n", pid, direction[0], direction[1], direction[2], 
+//			particle_orig(pid,0), particle_orig(pid,1), particle_orig(pid,2), particle_info.position[0], particle_info.position[1], particle_info.position[2]);
 
-        if (last_exit[pid] == -1) { // reached destination
-          physics.collide_particle(particle_info, field_info);
-        }
+        if (iter != 0) { //Ensure last_exit[pid] doesn't run the first time
+          if (last_exit[pid] == -1) { // reached destination
+            physics.collide_particle(particle_info, field_info);
+          }
+	}
+	else {
+	  physics.collide_particle(particle_info, field_info);
+	}
         physics.sample_collision_distance(particle_info, field_info);
-
+	
         // Update particle position and direction
         particle_dest(pid, 0) = particle_info.position[0];
         particle_dest(pid, 1) = particle_info.position[1];
@@ -177,11 +191,12 @@ void transport(pumiinopenmc::PumiTallyImpl &pumi_tally, DG2Physics &physics,
         particle_group(pid) = particle_info.energy_group;
 
         alpha[pid] = particle_info.alpha;
+//	printf("\n#### PID: %d, iter: %d, at position (%f,%f,%f). Direction was: (%f, %f, %f)  ####\n", pid, iter, particle_info.position[0],
+//		       	particle_info.position[1], particle_info.position[2], particle_info.direction[0], particle_info.direction[1], particle_info.direction[2]);
       }
     };
     pumipic::parallel_for(pumi_tally.pumipic_ptcls.get(), get_new_destination,
                           "get new destination");
-
     pumi_tally.search_and_rebuild(
         false, true); // for now, always rebuild the pp structure
     Kokkos::fence();
@@ -335,7 +350,7 @@ void get_field_values(Omega_h::Reals centroids, Fields &fields) {
   fields.ion_temperature.resize(num_elements, 1.0);
   fields.electron_density.resize(num_elements, 1.0);
   fields.ion_density.resize(num_elements, 1.0);
-  fields.bulk_flow_velocity.resize(num_elements, 0.0);
+  fields.bulk_flow_velocity.resize(3*num_elements, 0.0);
 
   // TODO: Add your code here to retrieve the actual field values
   // Write centroid coords to CSV to be read by python script
@@ -411,8 +426,7 @@ void read_input_parameters(int argc, char *const *argv,
 }
 
 void sample_initial_particle_energy(Kokkos::View<double *> energy_array) {
-  random_pool_t randomPool;
-
+  random_pool_t randomPool(0);
   auto sample_energy = OMEGA_H_LAMBDA(int i) {
     // Basically, feed this 4 uniformly generated random numbers, x1, x2, y1,
     // y2, on the interval (0,1) and it
@@ -420,7 +434,6 @@ void sample_initial_particle_energy(Kokkos::View<double *> energy_array) {
     // (directionx, directiony, directionz), the alpha value used in the tally,
     // and the energy of the particle that was sampled. All from a gas at
     // temperature temp.
-
     double mp{938.27e6 / (3e10 * 3e10)}; // eV/c^2 = eV*s^2/cm^2. Necessary
                                          // constant for the distribution
 
@@ -465,6 +478,8 @@ void sample_initial_particle_energy(Kokkos::View<double *> energy_array) {
     // computations.
     double particle_energy = 0.5 * mp * mag_v * mag_v;
     energy_array(i) = particle_energy;
+
+    
   };
   Kokkos::parallel_for("sample_initial_particle_energy", energy_array.size(),
                        sample_energy);

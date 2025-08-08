@@ -151,10 +151,16 @@ public:
 	double sigma_cx = charge_exchange_cross_section(particle_info, field_info);
 
 	//Generate distance and move particle
-    double l =-Kokkos::log(x)/(field_info.electron_density*sigma_ion+field_info.ion_density*sigma_cx); //cm. n in cm^-3
+//	printf("\n$$$ Before moving particle [%d], position: (%f, %f, %f)  $$$\n", particle_info.particle_index, particle_info.position[0], particle_info.position[1], 
+//			particle_info.position[2]);
+    double l =-Kokkos::log(x)/(field_info.electron_density*sigma_ion+field_info.ion_density*sigma_cx)*0.01; //m. n in cm^-3
     particle_info.position[0] += l*particle_info.direction[0];
     particle_info.position[1] += l*particle_info.direction[1];
     particle_info.position[2] += l*particle_info.direction[2];
+//	printf("\n$$$ After moving particle [%d], position (%f, %f, %f). Direction was (%f, %f, %f) with l = %f  $$$\n", particle_info.particle_index, particle_info.position[0],
+//			particle_info.position[1], particle_info.position[2], particle_info.direction[0], particle_info.direction[1], particle_info.direction[2], l);
+	double mp {938.27e6/(3e10*3e10)}; //eV/c^2 = eV*s^2/cm^2
+	particle_info.alpha = Kokkos::sqrt(mp/(2.0*particle_energy(particle_info.particle_index)))*100; //1/(m/s)
   }
 
   // collision event
@@ -172,13 +178,13 @@ public:
 	//Compute New Direction and Energy and set particle info
 	//Compute 3 Maxwellian (Gaussian) distributed velocities (cm/s)
 	double mp {938.27e6/(3e10*3e10)}; //eV/c^2 = eV*s^2/cm^2
-	double max_sigma_cx = 3.8e-14;
-
+	double max_rate_cx = 1.4e-7;
+	
 	bool rejection_test = false;
     auto old_mag_v = Kokkos::sqrt(2*particle_energy(particle_info.particle_index)/mp);
-    double vx;
-    double vy;
-    double vz;
+    double vx {};
+    double vy {};
+    double vz {};
     //Loops this until it passes the rejection test
     while (!rejection_test) {
     	//Generate random numbers for the velocity
@@ -200,7 +206,7 @@ public:
     	auto mag_v2 = rel_vx*rel_vx + rel_vy*rel_vy + rel_vz*rel_vz;
 
     	//Generate random number and compare to sigma/sigma_max
-    	if (rand_gen.drand(0., 1.) < analytic_cross_section_CE(0.5*mp*mag_v2)/max_sigma_cx) {
+    	if (rand_gen.drand(0., 1.) < Kokkos::sqrt(mag_v2)*analytic_cross_section_CE(0.5*mp*mag_v2)/max_rate_cx) {
         	rejection_test = true;
         }
     }
@@ -210,7 +216,7 @@ public:
 	particle_info.direction[0] = vx/mag_v;
 	particle_info.direction[1] = vy/mag_v;
 	particle_info.direction[2] = vz/mag_v;
-
+	
 	particle_energy(particle_info.particle_index) = 0.5*mp*mag_v*mag_v;
 	//particle_info.energy_group = particle_energy(particle_info.particle_index); //Temporary for debugging
 	//Adjust Weights
@@ -231,10 +237,11 @@ public:
         }
     }
 	particle_info.weight = new_weight;
+
+	//This definition may be redundant since it is also in the next location function
+	particle_info.alpha = Kokkos::sqrt(mp/(2.0*particle_energy(particle_info.particle_index)))*100; //1/(m/s)
 	random_pool.free_state(rand_gen);
-
-
-}
+  }
 //To here
   random_pool_t random_pool;
   DG2CrossSection cross_section;

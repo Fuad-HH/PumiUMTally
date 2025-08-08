@@ -598,12 +598,15 @@ void PumiParticleAtElemBoundary::updatePrevXPoint(PPPS *ptcls) {
       ptcls->capacity(), prev_xpoints_l.size());
   auto xpoints = ptcls->get<0>();
   auto update = PS_LAMBDA(const auto &e, const auto &pid, const auto &mask) {
+	  if (mask>0 && pid<10) {	
+	  
     prev_xpoints_l[pid * 3 + 0] = xpoints(pid, 0);
     prev_xpoints_l[pid * 3 + 1] = xpoints(pid, 1);
     prev_xpoints_l[pid * 3 + 2] = xpoints(pid, 2);
+	  }
   };
   pumipic::parallel_for(ptcls, update,
-                        "update previous xpoints from origin points");
+                       "update previous xpoints from origin points");
 }
 
 void PumiParticleAtElemBoundary::evaluateFlux(
@@ -618,6 +621,7 @@ void PumiParticleAtElemBoundary::evaluateFlux(
   auto p_wgt = ptcls->get<4>();
   auto p_groups = ptcls->get<5>();
   auto xpoints_l = xpoints; // todo shouldn't need it, so remove
+  auto alpha_l = alpha_;
 
   auto evaluate_flux =
       PS_LAMBDA(const int &e, const int &pid, const int &mask) {
@@ -648,7 +652,7 @@ void PumiParticleAtElemBoundary::evaluateFlux(
                orig[0], orig[1], orig[2], dest[0], dest[1], dest[2]);
       }
 
-      Omega_h::Real contribution = segment_length * p_wgt(pid) * alpha_[pid];
+      Omega_h::Real contribution = segment_length * p_wgt(pid) * alpha_l[pid];
 
       int group = p_groups(pid);
       OMEGA_H_CHECK_PRINTF(
@@ -873,6 +877,7 @@ PumiPIC particle structure size to %d\n", n_particles);
 void start_pumi_particles_in_0th_element(Omega_h::Mesh &mesh,
                                          pumiinopenmc::PPPS *ptcls) {
   // find the centroid of the 0th element
+	printf("\n***Started 0th Element***\n");
   const auto &coords = mesh.coords();
   const auto &tet2node = mesh.ask_down(Omega_h::REGION, Omega_h::VERT).ab2b;
 
@@ -943,12 +948,16 @@ void PumiTallyImpl::create_and_initialize_pumi_particle_structure(
         init_loc(pid, 0) = device_pos_buffer_l[pid * 3 + 0];
         init_loc(pid, 1) = device_pos_buffer_l[pid * 3 + 1];
         init_loc(pid, 2) = device_pos_buffer_l[pid * 3 + 2];
+//	if (pid < 10){
+//		printf("\n PID %d in element %d: (%f, %f, %f)\n",pid, e, init_loc(pid,0), init_loc(pid,1), init_loc(pid,2));
+//	}	
       }
     };
     pumipic::parallel_for(pumipic_ptcls.get(), copy_initial_positions,
                           "copy initial positions from device buffer");
   }
   if (source_dist == SourceDistribution::ZERO) {
+	  printf("\n**Source Distribution 0**\n");
     start_pumi_particles_in_0th_element(*mesh, pumipic_ptcls.get());
   }
   p_pumi_particle_at_elem_boundary_handler =
@@ -1090,6 +1099,7 @@ barycentric_basis(const o::Few<o::Vector<3>, 4> &tet_verts) {
   return basis;
 }
 
+/*
 OMEGA_H_DEVICE o::Vector<3>
 barycentric2real(const o::Few<o::Vector<3>, 4> &tet_verts,
                  const o::Vector<4> &bary) {
@@ -1105,6 +1115,18 @@ barycentric2real(const o::Few<o::Vector<3>, 4> &tet_verts,
 
   return real_coords;
 }
+*/
+
+OMEGA_H_DEVICE o::Vector<3>
+barycentric2real(const o::Few<o::Vector<3>, 4>& tet_verts,
+const o::Vector<4>& bary) {
+o::Vector<3> real_coords {0,0,0};
+for (int i = 0; i < 4; ++i) {
+real_coords += bary[i] * tet_verts[i];
+}
+return real_coords;
+}
+
 
 void initialize_uniform_source(Omega_h::Mesh &mesh,
                                Omega_h::Write<Omega_h::Real> particle_positions,
@@ -1135,7 +1157,7 @@ void initialize_uniform_source(Omega_h::Mesh &mesh,
   const auto cells2nodes = mesh.ask_down(o::REGION, o::VERT).ab2b;
   const auto coords = mesh.coords();
 
-  Kokkos::Random_XorShift64_Pool<Kokkos::DefaultExecutionSpace> random_pool;
+  Kokkos::Random_XorShift64_Pool<Kokkos::DefaultExecutionSpace> random_pool(0);
   auto set_initial_positions = OMEGA_H_LAMBDA(const int &e) {
     auto pid_start = cumulative_particles[e];
     auto pid_end = cumulative_particles[e + 1];
@@ -1144,19 +1166,19 @@ void initialize_uniform_source(Omega_h::Mesh &mesh,
 
     for (Omega_h::LO pid = pid_start; pid < pid_end; ++pid) {
       auto gen = random_pool.get_state();
-      o::Vector<4> random_bcc{0.0, 0.0, 0.0, 0.0};
-      random_bcc[0] = gen.drand(0.0, 1.0);
-      random_bcc[1] = gen.drand(0.0, 1.0);
-      random_bcc[2] = gen.drand(0.0, 1.0);
-      o::Real complimentary0 = 1.0 - random_bcc[0];
-      o::Real complimentary1 = 1.0 - random_bcc[1];
-      o::Real complimentary2 = 1.0 - random_bcc[2];
+      o::Real r1 = gen.drand(0.0, 1.0);
+	o::Real r2 = gen.drand(0.0, 1.0);
+	o::Real r3 = gen.drand(0.0, 1.0);
 
-      bool more_than_one = random_bcc[0] + random_bcc[1] + random_bcc[2] > 1.0;
-      random_bcc[0] = more_than_one ? complimentary0 : random_bcc[0];
-      random_bcc[1] = more_than_one ? complimentary1 : random_bcc[1];
-      random_bcc[2] = more_than_one ? complimentary2 : random_bcc[2];
-      random_bcc[2] = 1.0 - random_bcc[0] - random_bcc[1] - random_bcc[2];
+	r1 = Kokkos::pow(r1, 1.0 / 3.0);
+	r2 = Kokkos::sqrt(r2);
+	o::Real a = 1.0 - r1;
+	o::Real b = r1 * (1.0 - r2);
+	o::Real c = r1 * r2 * (1.0 - r3);
+	o::Real d = r1 * r2 * r3;
+
+	o::Vector<4> random_bcc{a, b, c, d};
+
       random_pool.free_state(gen);
 
       auto verts = o::gather_verts<4>(cells2nodes, e);
