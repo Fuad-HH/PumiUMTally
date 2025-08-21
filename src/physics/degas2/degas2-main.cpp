@@ -177,10 +177,10 @@ void transport(pumiinopenmc::PumiTallyImpl &pumi_tally, DG2Physics &physics,
           if (last_exit[pid] == -1) { // reached destination
             physics.collide_particle(particle_info, field_info);
           }
-	}
-	else {
-	  physics.collide_particle(particle_info, field_info);
-	}
+	    } else {
+	        physics.collide_particle(particle_info, field_info);
+	    }
+
         physics.sample_collision_distance(particle_info, field_info);
 	
         // Update particle position and direction
@@ -188,11 +188,9 @@ void transport(pumiinopenmc::PumiTallyImpl &pumi_tally, DG2Physics &physics,
         particle_dest(pid, 1) = particle_info.position[1];
         particle_dest(pid, 2) = particle_info.position[2];
         particle_weight(pid) = particle_info.weight;
-        particle_group(pid) = particle_info.energy_group;
+        particle_group(pid) = 0; // physics kernel does not handle groups yet
 
         alpha[pid] = particle_info.alpha;
-//	printf("\n#### PID: %d, iter: %d, at position (%f,%f,%f). Direction was: (%f, %f, %f)  ####\n", pid, iter, particle_info.position[0],
-//		       	particle_info.position[1], particle_info.position[2], particle_info.direction[0], particle_info.direction[1], particle_info.direction[2]);
       }
     };
     pumipic::parallel_for(pumi_tally.pumipic_ptcls.get(), get_new_destination,

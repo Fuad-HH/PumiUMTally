@@ -494,16 +494,23 @@ void apply_reflection_boundary_condition(
         // Material (%3d -> %3d)\n",
         //      pid, elem_ids[pid], next_elems[pid],
         //      class_ids[elem_ids[pid]], material_ids[pid]);
-        xFace[pid] = lastExit[pid];
-        OMEGA_H_CHECK_PRINTF(lastExit[pid] != -1,
-                             "Error: lastExit[%d] is -1 but "
+        //printf("P %d in element %d hit lastExit %d xFace %d \n", pid,
+        //       elem_ids[pid], lastExit[pid], xFace[pid]);
+        //xFace[pid] = lastExit[pid];
+        Omega_h::LO hit_face = (lastExit[pid] == -1) ? xFace[pid] : lastExit[pid];
+        xFace[pid] = hit_face;
+        lastExit[pid] = hit_face;
+        ptcl_done[pid] = 1; // stop the particle after reflection
+        next_elems[pid] = elem_ids[pid]; // reflects back to the same element
+        OMEGA_H_CHECK_PRINTF(hit_face != -1,
+                             "Error: xFace[%d] is -1 but "
                              "hit_outer_boundary is true\n",
                              pid);
 
         // change direction
-        auto normal = Omega_h::Vector<3>{normals[lastExit[pid] * 3 + 0],
-                                         normals[lastExit[pid] * 3 + 1],
-                                         normals[lastExit[pid] * 3 + 2]};
+        auto normal = Omega_h::Vector<3>{normals[hit_face * 3 + 0],
+                                         normals[hit_face * 3 + 1],
+                                         normals[hit_face * 3 + 2]};
         Omega_h::Vector<3> particle_direction = {
             particle_destination(pid, 0) - particle_origin(pid, 0),
             particle_destination(pid, 1) - particle_origin(pid, 1),
@@ -639,6 +646,7 @@ void PumiParticleAtElemBoundary::evaluateFlux(
 
       Omega_h::Real segment_length =
           Omega_h::norm(dest - orig); // / total_particles;
+          /*
       if (segment_length >
           total_tracklength_l[pid] + 1e-6) { // tol for float operations and
                                              // search algorithm's inaccuracy
@@ -651,6 +659,7 @@ void PumiParticleAtElemBoundary::evaluateFlux(
                segment_length, total_tracklength_l[pid], pid, elem_ids[pid], e,
                orig[0], orig[1], orig[2], dest[0], dest[1], dest[2]);
       }
+           */
 
       Omega_h::Real contribution = segment_length * p_wgt(pid) * alpha_l[pid];
 
@@ -715,7 +724,7 @@ void PumiParticleAtElemBoundary::finalizeAndWritePumiFlux(
   Omega_h::Write<Omega_h::Real> normalized_flux(num_elems, 0.0,
                                                 "normalized_flux");
   // copy flux to normalized_flux
-  for (int g = 0; g < num_groups; g++) {
+  for (int g = 0; g < 1; g++) {
     auto copy_flux = OMEGA_H_LAMBDA(Omega_h::LO elem_id) {
       normalized_flux[elem_id] = flux(elem_id, g, 0);
     };
@@ -724,8 +733,10 @@ void PumiParticleAtElemBoundary::finalizeAndWritePumiFlux(
     Kokkos::fence();
     full_mesh.add_tag(Omega_h::REGION, tag_name, 1,
                       Omega_h::Reals(normalized_flux));
+    Kokkos::fence();
   }
   Omega_h::vtk::write_parallel(filename, &full_mesh, 3);
+  Kokkos::fence();
 }
 
 void pumiUpdatePtclPositions(PPPS *ptcls) {
@@ -940,6 +951,8 @@ void PumiTallyImpl::create_and_initialize_pumi_particle_structure(
     // copy the device positions to the particle structure
     auto init_loc = pumipic_ptcls->get<0>();
     auto pids = pumipic_ptcls->get<2>();
+    auto in_flight = pumipic_ptcls->get<3>();
+    auto weight = pumipic_ptcls->get<4>();
 
     auto copy_initial_positions =
         PS_LAMBDA(const int &e, const int &pid, const int &mask) {
@@ -948,6 +961,9 @@ void PumiTallyImpl::create_and_initialize_pumi_particle_structure(
         init_loc(pid, 0) = device_pos_buffer_l[pid * 3 + 0];
         init_loc(pid, 1) = device_pos_buffer_l[pid * 3 + 1];
         init_loc(pid, 2) = device_pos_buffer_l[pid * 3 + 2];
+
+        in_flight(pid) = 1; // initialize the particle as in flight
+        weight(pid) = 1.0; // initialize the particle weight to 1.0
 //	if (pid < 10){
 //		printf("\n PID %d in element %d: (%f, %f, %f)\n",pid, e, init_loc(pid,0), init_loc(pid,1), init_loc(pid,2));
 //	}	
