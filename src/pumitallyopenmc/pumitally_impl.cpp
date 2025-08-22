@@ -511,14 +511,14 @@ void apply_reflection_boundary_condition(
         auto normal = Omega_h::Vector<3>{normals[hit_face * 3 + 0],
                                          normals[hit_face * 3 + 1],
                                          normals[hit_face * 3 + 2]};
-        Omega_h::Vector<3> particle_direction = {
+        Omega_h::Vector<3> incident_vector = {
             particle_destination(pid, 0) - particle_origin(pid, 0),
             particle_destination(pid, 1) - particle_origin(pid, 1),
             particle_destination(pid, 2) - particle_origin(pid, 2)};
         // reflect the particle direction
-        Omega_h::Vector<3> reflected_direction =
-            particle_direction -
-            2.0 * Omega_h::inner_product(particle_direction, normal) * normal;
+        Omega_h::Vector<3> reflected_vector =
+                incident_vector -
+                2.0 * Omega_h::inner_product(incident_vector, normal) * normal;
 
         // change the particle's position
         // particle reaches the boundary
@@ -527,11 +527,11 @@ void apply_reflection_boundary_condition(
         particle_origin(pid, 2) = inter_points[pid * 3 + 2];
 
         particle_destination(pid, 0) =
-            particle_origin(pid, 0) + reflected_direction[0];
+                particle_origin(pid, 0) + reflected_vector[0];
         particle_destination(pid, 1) =
-            particle_origin(pid, 1) + reflected_direction[1];
+                particle_origin(pid, 1) + reflected_vector[1];
         particle_destination(pid, 2) =
-            particle_origin(pid, 2) + reflected_direction[2];
+                particle_origin(pid, 2) + reflected_vector[2];
       }
     }
   };
