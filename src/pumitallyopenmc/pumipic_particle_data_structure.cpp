@@ -135,7 +135,7 @@ namespace pumiinopenmc {
 
         void initialize_particle_location(double *init_particle_positions, int64_t size);
 
-        void move_to_next_location(double *particle_destinations, int8_t *flying, double *weights, int64_t size);
+        void move_to_next_location(double *particle_origin, double *particle_destinations, int8_t *flying, double *weights, int64_t size);
 
         void write_pumi_tally_mesh();
 
@@ -175,37 +175,88 @@ namespace pumiinopenmc {
 #endif
     }
 
-    void
-    PumiTallyImpl::move_to_next_location(double *particle_destinations, int8_t *flying, double *weights, int64_t size) {
+    void PumiTallyImpl::move_to_next_location(double *particle_origin,
+                                              double *particle_destinations,
+                                              int8_t *flying, double *weights,
+                                              int64_t size) {
+
+      // *************** This Section is to move the particles to the new origin
+      // ************************ //
+      assert(size == pumi_ps_size * 3);
+      copy_data_to_device(particle_origin);
+
+      // copy position buffer ps
+      auto particle_orig = pumipic_ptcls->get<0>();
+      auto particle_dest = pumipic_ptcls->get<1>();
+      auto in_flight = pumipic_ptcls->get<3>();
+      auto p_wgt = pumipic_ptcls->get<4>();
+
+      // copy fly to device buffer
+      copy_and_reset_flying_flag(flying);
+
+      int64_t pumi_ps_size_ = pumi_ps_size;
+      const auto &device_pos_buffer_l = device_pos_buffer_;
+      const auto &device_in_adv_que_l = device_in_adv_que_;
+
+      auto set_particle_dest_orig =
+          PS_LAMBDA(const int &e, const int &pid, const int &mask) {
+        if (mask > 0 && pid < pumi_ps_size_) {
+          // everyone is in flight for this initial search
+          // in_flight(pid) = 1;
+          in_flight(pid) = static_cast<unsigned char>(device_in_adv_que_l[pid]);
+
+          if (in_flight(pid) == 1) {
+            particle_dest(pid, 0) = device_pos_buffer_l[pid * 3 + 0];
+            particle_dest(pid, 1) = device_pos_buffer_l[pid * 3 + 1];
+            particle_dest(pid, 2) = device_pos_buffer_l[pid * 3 + 2];
+          } else {
+            particle_dest(pid, 0) = particle_orig(pid, 0);
+            particle_dest(pid, 1) = particle_orig(pid, 1);
+            particle_dest(pid, 2) = particle_orig(pid, 2);
+          }
+
+          // printf("To Orig p %d e %d dest (%f,%f,%f)\n", pid, e,
+          //   particle_dest(pid, 0), particle_dest(pid, 1),
+          //   particle_dest(pid, 2));
+
+          p_wgt(pid) = 0.0;
+        }
+      };
+      pumipic::parallel_for(pumipic_ptcls.get(), set_particle_dest_orig,
+                            "set particle orig position as dest");
+
+      bool migrate = iter_count_ % 100 == 0;
+      search_and_rebuild(/*initial*/ false, /*migrate*/ true);
+#ifdef PUMI_MEASURE_TIME
+      Kokkos::fence();
+#endif
+
+      // **************************** End Initial Move to Origin
+      // *************************************** //
+
         assert(size == pumi_ps_size * 3);
 
         // copy to device buffer
         copy_data_to_device(particle_destinations);
-        // copy fly to device buffer
-        copy_and_reset_flying_flag(flying);
         copy_weights(weights);
 
-        // copy position buffer ps
-        auto particle_dest = pumipic_ptcls->get<1>();
-        auto in_flight = pumipic_ptcls->get<3>();
-
-        int64_t pumi_ps_size_ = pumi_ps_size;
-        const auto &device_pos_buffer_l = device_pos_buffer_;
-        const auto &device_in_adv_que_l = device_in_adv_que_;
+        Kokkos::fence();
 
         auto set_particle_dest = PS_LAMBDA(const int &e, const int &pid, const int &mask) {
             if (mask > 0 && pid < pumi_ps_size_) {
+              if (in_flight(pid) == 1) {
                 particle_dest(pid, 0) = device_pos_buffer_l[pid * 3 + 0];
                 particle_dest(pid, 1) = device_pos_buffer_l[pid * 3 + 1];
                 particle_dest(pid, 2) = device_pos_buffer_l[pid * 3 + 2];
-
-                // everyone is in flight for this initial search
-                in_flight(pid) = device_in_adv_que_l[pid];
+              } else {
+                particle_dest(pid, 0) = particle_orig(pid, 0);
+                particle_dest(pid, 1) = particle_orig(pid, 1);
+                particle_dest(pid, 2) = particle_orig(pid, 2);
+              }
             }
         };
         pumipic::parallel_for(pumipic_ptcls.get(), set_particle_dest, "set particle position as dest");
 
-        bool migrate = iter_count_ % 100 == 0;
         iter_count_++;
         search_and_rebuild(false, migrate);
 #ifdef PUMI_MEASURE_TIME
@@ -493,7 +544,7 @@ namespace pumiinopenmc {
             auto volume = Omega_h::simplex_size_from_basis(b);
 
             tet_volumes[elem_id] = volume;
-            normalized_flux[elem_id] = flux[elem_id] / (volume * total_tracklength_l.size());
+            normalized_flux[elem_id] = flux[elem_id] / volume;
         };
         Omega_h::parallel_for(tet_volumes.size(), normalize_flux_with_volume,
                               "normalize flux");
@@ -716,10 +767,10 @@ namespace pumiinopenmc {
     }
 
     void
-    PumiTally::move_to_next_location(double *particle_destinations, int8_t *flying, double *weights, int64_t size) {
+    PumiTally::move_to_next_location(double *particle_origin, double *particle_destinations, int8_t *flying, double *weights, int64_t size) {
         auto start_time = std::chrono::steady_clock::now();
 
-        pimpl->move_to_next_location(particle_destinations, flying, weights, size);
+        pimpl->move_to_next_location(particle_origin, particle_destinations, flying, weights, size);
 
         std::chrono::duration<double> elapsed_seconds = std::chrono::steady_clock::now() - start_time;
         pimpl->tally_times.total_time_to_tally += elapsed_seconds.count();
