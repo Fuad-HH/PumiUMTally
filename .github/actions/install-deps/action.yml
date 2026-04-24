@@ -51,7 +51,8 @@ runs:
           -DCMAKE_C_COMPILER=gcc-12 \
           -DKokkos_ENABLE_SERIAL=ON \
           -DKokkos_ENABLE_OPENMP=ON \
-          -DBUILD_SHARED_LIBS=ON
+          -DBUILD_SHARED_LIBS=ON \
+          -DKokkos_ENABLE_IMPL_VIEW_LEGACY=ON
         cmake --build /tmp/kokkos/build -j$(nproc)
         cmake --install /tmp/kokkos/build
 
