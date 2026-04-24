@@ -20,8 +20,8 @@ namespace pumitally {
  * Evaluates flux and its auxiliary operations after crossing element
  * boundaries.
  */
-struct ParticleAtElemBoundary;
-struct PumiTallyImpl;
+class ParticleAtElemBoundary;
+class PumiTallyImpl;
 
 /**
  * @brief PUMI-Tally Interface Class

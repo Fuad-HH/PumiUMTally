@@ -27,7 +27,7 @@ struct TallyTimes {
   /**
    * @brief Print the timing information in a readable format
    */
-  void print_times() const {
+  void PrintTimes() const {
     printf("\n");
     printf("[TIME] Initialization time     : %f seconds\n",
            initialization_time);
@@ -51,25 +51,26 @@ struct TallyTimes {
  * @n   3-in_advance_particle_queue,
  * @n   4-weight
  */
-typedef pumipic::MemberTypes<pumipic::Vector3d, pumipic::Vector3d, Omega_h::LO,
-                             Omega_h::I16, Omega_h::Real>
-    PPParticle;
-typedef pumipic::ParticleStructure<PPParticle> PPPS; //!< PUMI-PiC Particle DS
-typedef Kokkos::DefaultExecutionSpace
-    PPExeSpace; //!< PUMI-PiC Default Execution Space
+using PPParticle =
+    pumipic::MemberTypes<pumipic::Vector3d, pumipic::Vector3d, Omega_h::LO,
+                         Omega_h::I16, Omega_h::Real>;
+using PPPS = pumipic::ParticleStructure<PPParticle>; //!< PUMI-PiC Particle DS
+using PPExeSpace =
+    Kokkos::DefaultExecutionSpace; //!< PUMI-PiC Default Execution Space
 
 // ------------------------------------------------------------------------------------------------//
-std::unique_ptr<PPPS> create_particle_ds(const Omega_h::Mesh &mesh,
-                                         pumipic::lid_t numPtcls);
+std::unique_ptr<PPPS> CreateParticleDS(const Omega_h::Mesh &mesh,
+                                       pumipic::lid_t numPtcls);
 
-void start_particles_in_element0(Omega_h::Mesh &mesh, pumitally::PPPS *ptcls);
+void InitializeParticlesInElement0(Omega_h::Mesh &mesh, pumitally::PPPS *ptcls);
 
 PumiTally::~PumiTally() {
   pimpl.reset(nullptr);
   Kokkos::finalize();
 }
 
-struct ParticleAtElemBoundary {
+class ParticleAtElemBoundary {
+public:
   /**
    * Allocates tally and other arrays
    * @param nelems Number of mesh elements
@@ -91,7 +92,7 @@ struct ParticleAtElemBoundary {
    * @param elem_ids Current element ids of particles when tracking
    * @param next_elems Next element along particle trajectory
    * @param inter_faces ID of last intersected face
-   * @param lastExit TODO find the difference with inter_faces
+   * @param last_exit TODO find the difference with inter_faces
    * @param inter_points Particle intersection location of last face
    * @param ptcl_done If particle tracking is done for this step
    * @param origin_segment Origin locations segment
@@ -101,18 +102,17 @@ struct ParticleAtElemBoundary {
                   const Omega_h::Write<Omega_h::LO> &elem_ids,
                   const Omega_h::Write<Omega_h::LO> &next_elems,
                   const Omega_h::Write<Omega_h::LO> &inter_faces,
-                  const Omega_h::Write<Omega_h::LO> &lastExit,
+                  const Omega_h::Write<Omega_h::LO> &last_exit,
                   const Omega_h::Write<Omega_h::Real> &inter_points,
                   const Omega_h::Write<Omega_h::LO> &ptcl_done,
                   typeof(ptcls->get<0>()) origin_segment,
                   typeof(ptcls->get<1>()) dest_segment) const;
-
   /**
    * Save the current intersection points
    * @param xpoints Intersection points (flat: x0,y0,z0,x1,y1,z1,...)
    */
   void
-  update_previous_xpoint(const Omega_h::Write<Omega_h::Real> &xpoints) const;
+  UpdatePreviousXPoints(const Omega_h::Write<Omega_h::Real> &xpoints) const;
 
   /**
    * Save particle origin points as previous intersection points
@@ -120,7 +120,7 @@ struct ParticleAtElemBoundary {
    * @details This is generally used to initialize the prev_xpoint array
    * with the starting positions.
    */
-  void update_previous_xpoint(PPPS *ptcls) const;
+  void UpdatePreviousXPoints(PPPS *ptcls) const;
 
   /**
    * Calculate track-length estimated flux
@@ -135,7 +135,7 @@ struct ParticleAtElemBoundary {
    *
    * @see operator()
    */
-  void evaluateFlux(PPPS *ptcls, const Omega_h::Write<Omega_h::Real> &xpoints,
+  void EvaluateFlux(PPPS *ptcls, const Omega_h::Write<Omega_h::Real> &xpoints,
                     const Omega_h::Write<Omega_h::LO> &elem_ids,
                     const Omega_h::Write<Omega_h::LO> &ptcl_done) const;
 
@@ -146,23 +146,24 @@ struct ParticleAtElemBoundary {
    *
    * @see normalizeFlux
    */
-  void finalizeAndWriteFlux(Omega_h::Mesh &full_mesh,
-                            const std::string &filename) const;
+  void FinalizeTallies(Omega_h::Mesh &full_mesh,
+                       const std::string &filename) const;
 
   /**
    * Normalize flux with element volumes and number of particles
    * @param mesh Omega_h mesh object
    * @return Omega_h::Reals Normalized flux array
    */
-  Omega_h::Reals normalizeFlux(Omega_h::Mesh &mesh) const;
+  Omega_h::Reals NormalizeFlux(Omega_h::Mesh &mesh) const;
 
   /**
    * Mark the tracking step as initial step
    * @details It turns off tallying for this step
    * @param initial If it is initial
    */
-  void mask_as_initial(bool initial);
+  void MarkAsInitial(bool initial);
 
+private:
   bool initial_; // in initial run, flux is not tallied
   Omega_h::Write<Omega_h::Real> flux_;
   Omega_h::Write<Omega_h::Real> prev_xpoint_;
@@ -177,7 +178,8 @@ struct ParticleAtElemBoundary {
  * It contains the data structures and methods to perform the tally operations.
  * @see PumiTally
  */
-struct PumiTallyImpl {
+class PumiTallyImpl {
+private:
   int64_t pumi_ps_size_ = 1e5;   //!< Number of Particles
   std::string oh_mesh_filename_; //!< Omega_h mesh file name
 
@@ -207,6 +209,7 @@ struct PumiTallyImpl {
       device_in_adv_que_;                 //!< Particle moving status buffer
   Omega_h::Write<Omega_h::Real> weights_; //!< Particle weight buffer
 
+public:
   TallyTimes tally_times;
 
   PumiTallyImpl(const std::string &mesh_filename, int64_t num_particles,
@@ -259,7 +262,7 @@ PumiTallyImpl::PumiTallyImpl(const std::string &mesh_filename,
   // todo can track lengths be here?
 
   load_pumipic_mesh_and_init_particles(argc, argv);
-  start_particles_in_element0(*p_picparts_->mesh(), pumipic_ptcls.get());
+  InitializeParticlesInElement0(*p_picparts_->mesh(), pumipic_ptcls.get());
 
   p_particle_tracer_ = std::make_unique<
       ParticleTracer<PPParticle, pumitally::ParticleAtElemBoundary>>(
@@ -365,8 +368,8 @@ void PumiTallyImpl::move_to_next_location(double *particle_origin,
 }
 
 void PumiTallyImpl::write_pumi_tally_mesh() {
-  p_pumi_particle_at_elem_boundary_handler->finalizeAndWriteFlux(
-      full_mesh_, "fluxresult.vtk");
+  p_pumi_particle_at_elem_boundary_handler->FinalizeTallies(full_mesh_,
+                                                            "fluxresult.vtk");
 #ifdef PUMI_MEASURE_TIME
   Kokkos::fence();
 #endif
@@ -516,25 +519,23 @@ void ParticleAtElemBoundary::operator()(
     const Omega_h::Write<Omega_h::LO> &elem_ids,
     const Omega_h::Write<Omega_h::LO> &next_elems,
     const Omega_h::Write<Omega_h::LO> &inter_faces,
-    const Omega_h::Write<Omega_h::LO> &lastExit,
+    const Omega_h::Write<Omega_h::LO> &last_exit,
     const Omega_h::Write<Omega_h::Real> &inter_points,
     const Omega_h::Write<Omega_h::LO> &ptcl_done,
     typeof(ptcls->get<0>()) origin_segment,
     typeof(ptcls->get<1>()) dest_segment) const {
   if (!initial_) {
-    evaluateFlux(ptcls, inter_points, elem_ids, ptcl_done);
-    update_previous_xpoint(inter_points);
+    EvaluateFlux(ptcls, inter_points, elem_ids, ptcl_done);
+    UpdatePreviousXPoints(inter_points);
   }
   apply_boundary_condition(mesh, ptcls, elem_ids, next_elems, ptcl_done,
-                           lastExit, inter_faces, inter_points);
+                           last_exit, inter_faces, inter_points);
   move_to_next_element(ptcls, elem_ids, next_elems);
 }
 
-void ParticleAtElemBoundary::mask_as_initial(bool initial) {
-  initial_ = initial;
-}
+void ParticleAtElemBoundary::MarkAsInitial(bool initial) { initial_ = initial; }
 
-void ParticleAtElemBoundary::update_previous_xpoint(
+void ParticleAtElemBoundary::UpdatePreviousXPoints(
     const Omega_h::Write<Omega_h::Real> &xpoints) const {
   OMEGA_H_CHECK_PRINTF(xpoints.size() <= prev_xpoint_.size() &&
                            prev_xpoint_.size() != 0,
@@ -545,7 +546,7 @@ void ParticleAtElemBoundary::update_previous_xpoint(
   Omega_h::parallel_for(xpoints.size(), update, "update previous xpoints");
 }
 
-void ParticleAtElemBoundary::update_previous_xpoint(PPPS *ptcls) const {
+void ParticleAtElemBoundary::UpdatePreviousXPoints(PPPS *ptcls) const {
   // todo add checks of size
   const auto prev_xpoints_l = prev_xpoint_;
   OMEGA_H_CHECK_PRINTF(
@@ -562,7 +563,7 @@ void ParticleAtElemBoundary::update_previous_xpoint(PPPS *ptcls) const {
                         "update previous xpoints from origin points");
 }
 
-void ParticleAtElemBoundary::evaluateFlux(
+void ParticleAtElemBoundary::EvaluateFlux(
     PPPS *ptcls, const Omega_h::Write<Omega_h::Real> &xpoints,
     const Omega_h::Write<Omega_h::LO> &elem_ids,
     const Omega_h::Write<Omega_h::LO> &ptcl_done) const {
@@ -594,7 +595,7 @@ void ParticleAtElemBoundary::evaluateFlux(
 }
 
 Omega_h::Reals
-ParticleAtElemBoundary::normalizeFlux(Omega_h::Mesh &mesh) const {
+ParticleAtElemBoundary::NormalizeFlux(Omega_h::Mesh &mesh) const {
   const auto &el2n = mesh.ask_down(Omega_h::REGION, Omega_h::VERT).ab2b;
   const auto &coords = mesh.coords();
   const auto flux_l = flux_;
@@ -622,9 +623,9 @@ ParticleAtElemBoundary::normalizeFlux(Omega_h::Mesh &mesh) const {
   return {normalized_flux};
 }
 
-void ParticleAtElemBoundary::finalizeAndWriteFlux(
+void ParticleAtElemBoundary::FinalizeTallies(
     Omega_h::Mesh &full_mesh, const std::string &filename) const {
-  const auto &normalized_flux = normalizeFlux(full_mesh);
+  const auto &normalized_flux = NormalizeFlux(full_mesh);
   full_mesh.add_tag(Omega_h::REGION, "flux", 1, normalized_flux);
   Omega_h::vtk::write_parallel(filename, &full_mesh, 3);
 }
@@ -649,7 +650,7 @@ void PumiTallyImpl::search_and_rebuild(const bool initial,
   // may fail if simulated more than one batch
   assert((is_pumipic_initialized_ == false && initial == true) ||
          (is_pumipic_initialized_ == true && initial == false));
-  p_pumi_particle_at_elem_boundary_handler->mask_as_initial(initial);
+  p_pumi_particle_at_elem_boundary_handler->MarkAsInitial(initial);
   auto orig = pumipic_ptcls->get<0>();
   auto dest = pumipic_ptcls->get<1>();
   auto pid = pumipic_ptcls->get<2>();
@@ -660,7 +661,7 @@ void PumiTallyImpl::search_and_rebuild(const bool initial,
 
   // total tracklengths are used to calculate the flux
   if (!initial) {
-    p_pumi_particle_at_elem_boundary_handler->update_previous_xpoint(
+    p_pumi_particle_at_elem_boundary_handler->UpdatePreviousXPoints(
         pumipic_ptcls.get());
   }
 
@@ -671,8 +672,8 @@ void PumiTallyImpl::search_and_rebuild(const bool initial,
   }
 }
 
-std::unique_ptr<PPPS> create_particle_ds(const Omega_h::Mesh &mesh,
-                                         pumipic::lid_t numPtcls) {
+std::unique_ptr<PPPS> CreateParticleDS(const Omega_h::Mesh &mesh,
+                                       pumipic::lid_t numPtcls) {
   Omega_h::Int ne = mesh.nelems();
   pumitally::PPPS::kkLidView ptcls_per_elem("ptcls_per_elem", ne);
   pumitally::PPPS::kkGidView element_gids("element_gids", ne);
@@ -702,7 +703,8 @@ std::unique_ptr<PPPS> create_particle_ds(const Omega_h::Mesh &mesh,
   return ptcls;
 }
 
-void start_particles_in_element0(Omega_h::Mesh &mesh, pumitally::PPPS *ptcls) {
+void InitializeParticlesInElement0(Omega_h::Mesh &mesh,
+                                   pumitally::PPPS *ptcls) {
   // find the centroid of the 0th element
   const auto &coords = mesh.coords();
   const auto &tet2node = mesh.ask_down(Omega_h::REGION, Omega_h::VERT).ab2b;
@@ -754,8 +756,8 @@ Omega_h::Mesh PumiTallyImpl::partition_pumipic_mesh() {
 
 void PumiTallyImpl::create_and_initialize_pumi_particle_structure(
     Omega_h::Mesh &mesh) {
-  pumipic_ptcls = create_particle_ds(mesh, pumi_ps_size_);
-  start_particles_in_element0(mesh, pumipic_ptcls.get());
+  pumipic_ptcls = CreateParticleDS(mesh, pumi_ps_size_);
+  InitializeParticlesInElement0(mesh, pumipic_ptcls.get());
   p_pumi_particle_at_elem_boundary_handler =
       std::make_unique<pumitally::ParticleAtElemBoundary>(
           mesh.nelems(), pumipic_ptcls->capacity());
@@ -827,7 +829,7 @@ void PumiTally::write_pumi_tally_mesh() const {
   const std::chrono::duration<double> elapsed_seconds =
       std::chrono::steady_clock::now() - start_time;
   pimpl->tally_times.vtk_file_write_time += elapsed_seconds.count();
-  pimpl->tally_times.print_times();
+  pimpl->tally_times.PrintTimes();
 }
 
 } // namespace pumitally
