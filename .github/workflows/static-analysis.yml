@@ -37,7 +37,7 @@ jobs:
           set -euo pipefail
 
           mapfile -t files < <(find . -type f \( -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \) \
-            ! -path './.git/*' ! -path './build/*' ! -path './.*/*')
+            ! -path './.git/*' ! -path './build/*' ! -path './deps/*' ! -path './.*/*')
 
           if [ "${#files[@]}" -eq 0 ]; then
             echo "No C++ files found."
