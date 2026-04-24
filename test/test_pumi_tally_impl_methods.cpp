@@ -113,11 +113,11 @@ TEST_CASE("Test Impl Class Functions") {
   // Locations ***********************//
   //*************************************************************************************************************//
 
+  std::vector<double> init_particle_positions(num_ptcls * 3);
   { // * Note: all 5 particles will start their journey as follows:
     // ray_origin   =   [0.1, 0.4, 0.5] in cell 2
     // ray_end      =   [1.1, 0.4, 0.5] passing through cells 2, 3, 4 and
     // finally leaving the box
-    std::vector<double> init_particle_positions(num_ptcls * 3);
     for (int pid = 0; pid < num_ptcls; ++pid) {
       init_particle_positions[pid * 3] = 0.1;
       init_particle_positions[pid * 3 + 1] = 0.4;
@@ -213,9 +213,9 @@ TEST_CASE("Test Impl Class Functions") {
 
   {                                           // not a check, just move
     std::vector<int8_t> flying(num_ptcls, 1); // reset them again to 1
-    p_pumi_tallyimpl->move_to_next_location(particle_destination.data(),
-                                            flying.data(), weights.data(),
-                                            particle_destination.size());
+    p_pumi_tallyimpl->move_to_next_location(
+        init_particle_positions.data(), particle_destination.data(),
+        flying.data(), weights.data(), particle_destination.size());
   }
 
   { // * Check if the particles correctly reaches element 4
@@ -316,8 +316,8 @@ TEST_CASE("Test Impl Class Functions") {
       }
     }
     p_pumi_tallyimpl->move_to_next_location(
-        next_positions.data(), flying_flags.data(), particle_weights.data(),
-        next_positions.size());
+        init_particle_positions.data(), next_positions.data(),
+        flying_flags.data(), particle_weights.data(), next_positions.size());
     // ***********************************************************************************************************//
 
     { // * check new origins
