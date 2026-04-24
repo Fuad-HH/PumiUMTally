@@ -29,7 +29,7 @@ jobs:
         id: cache-deps
         with:
           path: ${{ env.DEPS_DIR }}
-          key: deps-${{ runner.os }}-kokkos4.7.00-omegah-scorec11.0.0-cabana0.6.1-pumipic
+          key: deps-${{ runner.os }}-kokkos4.7.00-omegah-scorec11.0.0-cabana0.6.1-pumipic-shared
 
       - name: Build Kokkos
         if: steps.cache-deps.outputs.cache-hit != 'true'
@@ -39,7 +39,8 @@ jobs:
             -DCMAKE_INSTALL_PREFIX=$DEPS_DIR \
             -DCMAKE_BUILD_TYPE=Release \
             -DKokkos_ENABLE_SERIAL=ON \
-            -DKokkos_ENABLE_OPENMP=ON
+            -DKokkos_ENABLE_OPENMP=ON \
+            -DBUILD_SHARED_LIBS=ON
           cmake --build /tmp/kokkos/build -j$(nproc)
           cmake --install /tmp/kokkos/build
 
