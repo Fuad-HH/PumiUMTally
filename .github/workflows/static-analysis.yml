@@ -1,0 +1,47 @@
+name: Static Analysis
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  clang-tidy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install clang-tidy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-tidy-20
+
+      - name: Run clang-tidy
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          mapfile -t files < <(find . -type f \( -name '*.cpp' -o -name '*.cc' -o -name '*.h' -o -name '*.hpp' \) \
+            ! -path './.git/*' ! -path './build/*' ! -path './.*/*')
+
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No C++ files found."
+            exit 0
+          fi
+
+          clang-tidy-20 --version
+
+          found_issues=0
+          for f in "${files[@]}"; do
+            echo "::group::Analyzing $f"
+            output=$(clang-tidy-20 --quiet "$f" -- -std=c++17 -x c++ 2>&1) || true
+            echo "$output"
+            if echo "$output" | grep -qE '\[(readability-|bugprone-|performance-|modernize-|clang-analyzer-)'; then
+              found_issues=1
+              echo "::error file=$f::clang-tidy found issues"
+            fi
+            echo "::endgroup::"
+          done
+
+          exit $found_issues

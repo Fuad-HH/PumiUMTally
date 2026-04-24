@@ -10,11 +10,6 @@ option(PUMI_USE_KOKKOS_CUDA                 "Use CUDA"                      OFF)
 option(PUMI_MEASURE_TIME                    "Measure time"                  OFF)
 ###################################################################
 
-############################ CLANG ################################
-#set(CMAKE_CXX_CLANG_TIDY "clang-tidy;-extra-arg=-std=c++17")
-###################################################################
-
-
 ################################## PUMIPIC ########################
 find_package(pumipic REQUIRED)
 if(pumipic_FOUND)
