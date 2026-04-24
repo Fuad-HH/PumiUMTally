@@ -1,0 +1,36 @@
+name: Format Check
+
+on:
+  push:
+  pull_request:
+  pull_request_target:
+  workflow_dispatch:
+
+jobs:
+  format-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install clang-format 20
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-20
+
+      - name: Check C++ formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t files < <(find . -type f \( -name '*.cpp' -o -name '*.cc' -o -name '*.h' -o -name '*.hpp' \) \
+            ! -path './.git/*' ! -path './build/*' ! -path './.*/*')
+
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No C++ files found."
+            exit 0
+          fi
+
+          clang-format-20 --version
+          clang-format-20 -style=file --dry-run -Werror "${files[@]}"
+
