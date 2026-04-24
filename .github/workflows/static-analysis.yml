@@ -5,6 +5,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+env:
+  DEPS_DIR: ${{ github.workspace }}/deps
+
 jobs:
   clang-tidy:
     runs-on: ubuntu-latest
@@ -12,17 +15,110 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install clang-tidy
+      - name: Install system packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-tidy-20
+          sudo apt-get install -y \
+            cmake ninja-build build-essential \
+            libopenmpi-dev openmpi-bin \
+            zlib1g-dev \
+            clang-tidy-20
+
+      - name: Cache dependencies
+        uses: actions/cache@v5
+        id: cache-deps
+        with:
+          path: ${{ env.DEPS_DIR }}
+          key: deps-${{ runner.os }}-kokkos4.7.00-omegah-scorec11.0.0-cabana0.6.1-pumipic
+
+      - name: Build Kokkos
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch 4.7.00 https://github.com/kokkos/kokkos.git /tmp/kokkos
+          cmake -G Ninja -S /tmp/kokkos -B /tmp/kokkos/build \
+            -DCMAKE_INSTALL_PREFIX=$DEPS_DIR \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DKokkos_ENABLE_SERIAL=ON \
+            -DKokkos_ENABLE_OPENMP=ON
+          cmake --build /tmp/kokkos/build -j$(nproc)
+          cmake --install /tmp/kokkos/build
+
+      - name: Build EnGPar
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 https://github.com/SCOREC/EnGPar.git /tmp/engpar
+          cmake -G Ninja -S /tmp/engpar -B /tmp/engpar/build \
+            -DCMAKE_INSTALL_PREFIX=$DEPS_DIR \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=mpicxx \
+            -DCMAKE_C_COMPILER=mpicc \
+            -DENABLE_PARMETIS=OFF \
+            -DENABLE_PUMI=OFF \
+            -DBUILD_SHARED_LIBS=ON
+          cmake --build /tmp/engpar/build -j$(nproc)
+          cmake --install /tmp/engpar/build
+
+      - name: Build Omega_h
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch scorec-v11.0.0 https://github.com/SCOREC/omega_h.git /tmp/omega_h
+          cmake -G Ninja -S /tmp/omega_h -B /tmp/omega_h/build \
+            -DCMAKE_INSTALL_PREFIX=$DEPS_DIR \
+            -DCMAKE_PREFIX_PATH=$DEPS_DIR \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=mpicxx \
+            -DCMAKE_C_COMPILER=mpicc \
+            -DOmega_h_USE_Kokkos=ON \
+            -DOmega_h_USE_MPI=ON \
+            -DOmega_h_USE_ZLIB=ON \
+            -DBUILD_SHARED_LIBS=ON
+          cmake --build /tmp/omega_h/build -j$(nproc)
+          cmake --install /tmp/omega_h/build
+
+      - name: Build Cabana
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch 0.6.1 https://github.com/ECP-CoPA/Cabana.git /tmp/cabana
+          cmake -G Ninja -S /tmp/cabana -B /tmp/cabana/build \
+            -DCMAKE_INSTALL_PREFIX=$DEPS_DIR \
+            -DCMAKE_PREFIX_PATH=$DEPS_DIR \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=mpicxx \
+            -DBUILD_SHARED_LIBS=ON
+          cmake --build /tmp/cabana/build -j$(nproc)
+          cmake --install /tmp/cabana/build
+
+      - name: Build pumi-pic
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch make_search_class https://github.com/Fuad-HH/pumi-pic.git /tmp/pumi-pic
+          cmake -G Ninja -S /tmp/pumi-pic -B /tmp/pumi-pic/build \
+            -DCMAKE_INSTALL_PREFIX=$DEPS_DIR \
+            -DCMAKE_PREFIX_PATH=$DEPS_DIR \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER=mpicxx \
+            -DCMAKE_C_COMPILER=mpicc \
+            -DENABLE_CABANA=ON \
+            -DBUILD_SHARED_LIBS=ON
+          cmake --build /tmp/pumi-pic/build -j$(nproc)
+          cmake --install /tmp/pumi-pic/build
+
+      - name: Configure pumi-tally
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_PREFIX_PATH=$DEPS_DIR \
+            -DCMAKE_CXX_COMPILER=mpicxx \
+            -DCMAKE_C_COMPILER=mpicc \
+            -DBUILD_SHARED_LIBS=ON \
+            -DPUMITALLYOPENMC_ENABLE_TESTS=OFF \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 
       - name: Run clang-tidy
         shell: bash
         run: |
-          set -uo pipefail
+          set -euo pipefail
 
-          mapfile -t files < <(find . -type f \( -name '*.cpp' -o -name '*.cc' -o -name '*.h' -o -name '*.hpp' \) \
+          mapfile -t files < <(find . -type f \( -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \) \
             ! -path './.git/*' ! -path './build/*' ! -path './.*/*')
 
           if [ "${#files[@]}" -eq 0 ]; then
@@ -31,17 +127,4 @@ jobs:
           fi
 
           clang-tidy-20 --version
-
-          found_issues=0
-          for f in "${files[@]}"; do
-            echo "::group::Analyzing $f"
-            output=$(clang-tidy-20 --quiet "$f" -- -std=c++17 -x c++ 2>&1) || true
-            echo "$output"
-            if echo "$output" | grep -qE '\[(readability-|bugprone-|performance-|modernize-|clang-analyzer-)'; then
-              found_issues=1
-              echo "::error file=$f::clang-tidy found issues"
-            fi
-            echo "::endgroup::"
-          done
-
-          exit $found_issues
+          clang-tidy-20 -p build "${files[@]}"
