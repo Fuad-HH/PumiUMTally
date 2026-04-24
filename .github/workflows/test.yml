@@ -1,0 +1,37 @@
+name: Test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  DEPS_DIR: ${{ github.workspace }}/deps
+
+jobs:
+  ctest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install dependencies
+        uses: ./.github/actions/install-deps
+        with:
+          deps-dir: ${{ env.DEPS_DIR }}
+
+      - name: Configure pumi-tally
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_PREFIX_PATH=$DEPS_DIR \
+            -DCMAKE_CXX_COMPILER=mpicxx \
+            -DCMAKE_C_COMPILER=mpicc \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=ON \
+            -DPUMITALLYOPENMC_ENABLE_TESTS=ON
+
+      - name: Build
+        run: cmake --build build -j$(nproc)
+
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
