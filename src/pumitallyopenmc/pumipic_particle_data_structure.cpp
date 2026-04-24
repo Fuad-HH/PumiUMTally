@@ -59,18 +59,16 @@ typedef Kokkos::DefaultExecutionSpace
     PPExeSpace; //!< PUMI-PiC Default Execution Space
 
 // ------------------------------------------------------------------------------------------------//
-std::unique_ptr<PPPS> pp_create_particle_structure(Omega_h::Mesh mesh,
-                                                   pumipic::lid_t numPtcls);
+std::unique_ptr<PPPS> create_particle_ds(const Omega_h::Mesh &mesh,
+                                         pumipic::lid_t numPtcls);
 
-void start_pumi_particles_in_0th_element(Omega_h::Mesh &mesh,
-                                         pumitally::PPPS *ptcls);
+void start_particles_in_element0(Omega_h::Mesh &mesh, pumitally::PPPS *ptcls);
 
 PumiTally::~PumiTally() {
   pimpl.reset(nullptr);
   Kokkos::finalize();
 }
 
-// ------------------------------------------------------------------------------------------------//
 struct ParticleAtElemBoundary {
   /**
    * Allocates tally and other arrays
@@ -99,27 +97,30 @@ struct ParticleAtElemBoundary {
    * @param origin_segment Origin locations segment
    * @param dest_segment Destination locations segment
    */
-  void operator()(Omega_h::Mesh &mesh, pumitally::PPPS *ptcls,
-                  Omega_h::Write<Omega_h::LO> &elem_ids,
-                  Omega_h::Write<Omega_h::LO> &next_elems,
-                  Omega_h::Write<Omega_h::LO> &inter_faces,
-                  Omega_h::Write<Omega_h::LO> &lastExit,
-                  Omega_h::Write<Omega_h::Real> &inter_points,
-                  Omega_h::Write<Omega_h::LO> &ptcl_done,
+  void operator()(const Omega_h::Mesh &mesh, pumitally::PPPS *ptcls,
+                  const Omega_h::Write<Omega_h::LO> &elem_ids,
+                  const Omega_h::Write<Omega_h::LO> &next_elems,
+                  const Omega_h::Write<Omega_h::LO> &inter_faces,
+                  const Omega_h::Write<Omega_h::LO> &lastExit,
+                  const Omega_h::Write<Omega_h::Real> &inter_points,
+                  const Omega_h::Write<Omega_h::LO> &ptcl_done,
                   typeof(ptcls->get<0>()) origin_segment,
-                  typeof(ptcls->get<1>()) dest_segment);
+                  typeof(ptcls->get<1>()) dest_segment) const;
 
   /**
    * Save the current intersection points
    * @param xpoints Intersection points (flat: x0,y0,z0,x1,y1,z1,...)
    */
-  void updatePrevXPoint(Omega_h::Write<Omega_h::Real> &xpoints);
+  void
+  update_previous_xpoint(const Omega_h::Write<Omega_h::Real> &xpoints) const;
 
   /**
    * Save particle origin points as previous intersection points
    * @param ptcls PUMI-PiC Particle DS
+   * @details This is generally used to initialize the prev_xpoint array
+   * with the starting positions.
    */
-  void updatePrevXPoint(PPPS *ptcls);
+  void update_previous_xpoint(PPPS *ptcls) const;
 
   /**
    * Calculate track-length estimated flux
@@ -134,9 +135,9 @@ struct ParticleAtElemBoundary {
    *
    * @see operator()
    */
-  void evaluateFlux(PPPS *ptcls, Omega_h::Write<Omega_h::Real> xpoints,
-                    Omega_h::Write<Omega_h::LO> elem_ids,
-                    Omega_h::Write<Omega_h::LO> ptcl_done);
+  void evaluateFlux(PPPS *ptcls, const Omega_h::Write<Omega_h::Real> &xpoints,
+                    const Omega_h::Write<Omega_h::LO> &elem_ids,
+                    const Omega_h::Write<Omega_h::LO> &ptcl_done) const;
 
   /**
    * Normalize the flux with volume and write it in a vTK file
@@ -146,14 +147,14 @@ struct ParticleAtElemBoundary {
    * @see normalizeFlux
    */
   void finalizeAndWriteFlux(Omega_h::Mesh &full_mesh,
-                            const std::string &filename);
+                            const std::string &filename) const;
 
   /**
    * Normalize flux with element volumes and number of particles
    * @param mesh Omega_h mesh object
    * @return Omega_h::Reals Normalized flux array
    */
-  Omega_h::Reals normalizeFlux(Omega_h::Mesh &mesh);
+  Omega_h::Reals normalizeFlux(Omega_h::Mesh &mesh) const;
 
   /**
    * Mark the tracking step as initial step
@@ -177,8 +178,8 @@ struct ParticleAtElemBoundary {
  * @see PumiTally
  */
 struct PumiTallyImpl {
-  int64_t pumi_ps_size = 1e5; //!< Number of Particles
-  std::string oh_mesh_fname;  //!< Omega_h mesh file name
+  int64_t pumi_ps_size_ = 1e5;   //!< Number of Particles
+  std::string oh_mesh_filename_; //!< Omega_h mesh file name
 
   Omega_h::Library oh_lib_; //!< Omega_h Library (Holds MPI Comm)
   Omega_h::Mesh full_mesh_; //!< Full mesh before partition
@@ -208,23 +209,20 @@ struct PumiTallyImpl {
 
   TallyTimes tally_times;
 
-  // * Constructor
-  PumiTallyImpl(std::string &mesh_filename, int64_t num_particles, int &argc,
-                char **&argv); // fixme extra &
+  PumiTallyImpl(const std::string &mesh_filename, int64_t num_particles,
+                int argc, char **argv);
 
-  // * Destructor
   ~PumiTallyImpl() = default;
 
-  // Functions
-  void create_and_initialize_pumi_particle_structure(Omega_h::Mesh *mesh);
+  void create_and_initialize_pumi_particle_structure(Omega_h::Mesh &mesh);
 
   void load_pumipic_mesh_and_init_particles(int &argc, char **&argv);
 
-  Omega_h::Mesh *partition_pumipic_mesh();
+  Omega_h::Mesh partition_pumipic_mesh();
 
   void init_pumi_libs(int &argc, char **&argv);
 
-  void search_and_rebuild(bool initial, bool migrate = true);
+  void search_and_rebuild(bool initial, bool migrate = true) const;
 
   void read_pumipic_lib_and_full_mesh(int &argc, char **&argv);
 
@@ -237,31 +235,31 @@ struct PumiTallyImpl {
 
   void write_pumi_tally_mesh();
 
-  void copy_data_to_device(double *init_particle_positions);
+  void copy_coordinates_to_device(double *particle_positions) const;
 
   void search_initial_elements();
 
-  void copy_and_reset_flying_flag(int8_t *flying);
+  void copy_and_reset_flying_flag(int8_t *flying) const;
 
-  void copy_weights(double *weights);
+  void copy_weights(double *weights) const;
 };
 
-PumiTallyImpl::PumiTallyImpl(std::string &mesh_filename, int64_t num_particles,
-                             int &argc, char **&argv) {
-  pumi_ps_size = num_particles;
-  oh_mesh_fname = mesh_filename;
+PumiTallyImpl::PumiTallyImpl(const std::string &mesh_filename,
+                             const int64_t num_particles, int argc,
+                             char **argv) {
+  pumi_ps_size_ = num_particles;
+  oh_mesh_filename_ = mesh_filename;
 
-  device_pos_buffer_ =
-      Omega_h::Write<Omega_h::Real>(pumi_ps_size * 3, 0.0, "device_pos_buffer");
+  device_pos_buffer_ = Omega_h::Write<Omega_h::Real>(pumi_ps_size_ * 3, 0.0,
+                                                     "device_pos_buffer");
   device_in_adv_que_ =
-      Omega_h::Write<Omega_h::I8>(pumi_ps_size, 0, "device_in_adv_que");
-  weights_ = Omega_h::Write<Omega_h::Real>(pumi_ps_size, 0.0, "weights");
+      Omega_h::Write<Omega_h::I8>(pumi_ps_size_, 0, "device_in_adv_que");
+  weights_ = Omega_h::Write<Omega_h::Real>(pumi_ps_size_, 0.0, "weights");
 
   // todo can track lengths be here?
 
   load_pumipic_mesh_and_init_particles(argc, argv);
-  start_pumi_particles_in_0th_element(*p_picparts_->mesh(),
-                                      pumipic_ptcls.get());
+  start_particles_in_element0(*p_picparts_->mesh(), pumipic_ptcls.get());
 
   p_particle_tracer_ = std::make_unique<
       ParticleTracer<PPParticle, pumitally::ParticleAtElemBoundary>>(
@@ -272,8 +270,8 @@ PumiTallyImpl::PumiTallyImpl(std::string &mesh_filename, int64_t num_particles,
 void PumiTallyImpl::initialize_particle_location(
     double *init_particle_positions, int64_t size) {
   // copy to host buffer
-  assert(size == pumi_ps_size * 3);
-  copy_data_to_device(init_particle_positions);
+  assert(size == pumi_ps_size_ * 3);
+  copy_coordinates_to_device(init_particle_positions);
   search_initial_elements();
   // TODO Get total initial particle weight
 #ifdef PUMI_MEASURE_TIME
@@ -286,10 +284,9 @@ void PumiTallyImpl::move_to_next_location(double *particle_origin,
                                           int8_t *flying, double *weights,
                                           int64_t size) {
 
-  // *************** This Section is to move the particles to the new origin
-  // ************************ //
-  assert(size == pumi_ps_size * 3);
-  copy_data_to_device(particle_origin);
+  // *************** Start Initial Move to Origin ************************** //
+  assert(size == pumi_ps_size_ * 3);
+  copy_coordinates_to_device(particle_origin);
 
   // copy position buffer ps
   auto particle_orig = pumipic_ptcls->get<0>();
@@ -300,13 +297,13 @@ void PumiTallyImpl::move_to_next_location(double *particle_origin,
   // copy fly to device buffer
   copy_and_reset_flying_flag(flying);
 
-  int64_t pumi_ps_size_ = pumi_ps_size;
+  int64_t pumi_ps_size = pumi_ps_size_;
   const auto &device_pos_buffer_l = device_pos_buffer_;
   const auto &device_in_adv_que_l = device_in_adv_que_;
 
   auto set_particle_dest_orig =
       PS_LAMBDA(const int &e, const int &pid, const int &mask) {
-    if (mask > 0 && pid < pumi_ps_size_) {
+    if (mask > 0 && pid < pumi_ps_size) {
       // everyone is in flight for this initial search
       // in_flight(pid) = 1;
       in_flight(pid) = static_cast<unsigned char>(device_in_adv_que_l[pid]);
@@ -333,13 +330,12 @@ void PumiTallyImpl::move_to_next_location(double *particle_origin,
   Kokkos::fence();
 #endif
 
-  // **************************** End Initial Move to Origin
-  // *************************************** //
+  // ************** End Initial Move to Origin ****************************** //
 
-  assert(size == pumi_ps_size * 3);
+  assert(size == pumi_ps_size_ * 3);
 
   // copy to device buffer
-  copy_data_to_device(particle_destinations);
+  copy_coordinates_to_device(particle_destinations);
   copy_weights(weights);
 
   Kokkos::fence();
@@ -376,29 +372,29 @@ void PumiTallyImpl::write_pumi_tally_mesh() {
 #endif
 }
 
-void PumiTallyImpl::copy_and_reset_flying_flag(int8_t *flying) {
+void PumiTallyImpl::copy_and_reset_flying_flag(int8_t *flying) const {
   // todo get the size too
-  auto device_in_adv_que_l = device_in_adv_que_;
-  Kokkos::View<Omega_h::I8 *, Kokkos::HostSpace,
-               Kokkos::MemoryTraits<Kokkos::Unmanaged>>
-      host_flying_view(flying, pumi_ps_size);
-  Kokkos::View<Omega_h::I8 *, PPExeSpace,
-               Kokkos::MemoryTraits<Kokkos::Unmanaged>>
+  const auto device_in_adv_que_l = device_in_adv_que_;
+  const Kokkos::View<Omega_h::I8 *, Kokkos::HostSpace,
+                     Kokkos::MemoryTraits<Kokkos::Unmanaged>>
+      host_flying_view(flying, pumi_ps_size_);
+  const Kokkos::View<Omega_h::I8 *, PPExeSpace,
+                     Kokkos::MemoryTraits<Kokkos::Unmanaged>>
       device_flying_view(device_in_adv_que_l.data(),
                          device_in_adv_que_l.size());
   Kokkos::deep_copy(device_flying_view, host_flying_view);
 
-  for (int64_t pid = 0; pid < pumi_ps_size; ++pid) {
-    // reset flying flag to zero
+  for (int64_t pid = 0; pid < pumi_ps_size_; ++pid) {
+    // reset flying flag to zero // TODO: why, specific reason
     flying[pid] = 0;
   }
 }
 
-void PumiTallyImpl::copy_weights(double *weights) {
+void PumiTallyImpl::copy_weights(double *weights) const {
   auto weights_l = weights_;
   Kokkos::View<Omega_h::Real *, Kokkos::HostSpace,
                Kokkos::MemoryTraits<Kokkos::Unmanaged>>
-      host_weights_view(weights, pumi_ps_size);
+      host_weights_view(weights, pumi_ps_size_);
   Kokkos::View<Omega_h::Real *, PPExeSpace,
                Kokkos::MemoryTraits<Kokkos::Unmanaged>>
       device_weights_view(weights_l.data(), weights_l.size());
@@ -419,7 +415,7 @@ void PumiTallyImpl::search_initial_elements() { // assign the location to ptcl
   auto particle_dest = pumipic_ptcls->get<1>();
   auto in_flight = pumipic_ptcls->get<3>();
 
-  int64_t pumi_ps_size_l = pumi_ps_size;
+  int64_t pumi_ps_size_l = pumi_ps_size_;
   const auto &device_pos_buffer_l = device_pos_buffer_;
 
   auto set_particle_dest =
@@ -441,29 +437,29 @@ void PumiTallyImpl::search_initial_elements() { // assign the location to ptcl
   is_pumipic_initialized_ = true;
 }
 
-void PumiTallyImpl::copy_data_to_device(double *init_particle_positions) {
+void PumiTallyImpl::copy_coordinates_to_device(
+    double *particle_positions) const {
   // fixme it should get size too to avoid memory error
-  Kokkos::View<Omega_h::Real *, Kokkos::HostSpace,
-               Kokkos::MemoryTraits<Kokkos::Unmanaged>>
-      host_pos_view(init_particle_positions, pumi_ps_size * 3);
+  const Kokkos::View<Omega_h::Real *, Kokkos::HostSpace,
+                     Kokkos::MemoryTraits<Kokkos::Unmanaged>>
+      host_pos_view(particle_positions, pumi_ps_size_ * 3);
 
-  Kokkos::View<Omega_h::Real *, PPExeSpace,
-               Kokkos::MemoryTraits<Kokkos::Unmanaged>>
-      device_pos_view(device_pos_buffer_.data(), pumi_ps_size * 3);
+  const Kokkos::View<Omega_h::Real *, PPExeSpace,
+                     Kokkos::MemoryTraits<Kokkos::Unmanaged>>
+      device_pos_view(device_pos_buffer_.data(), pumi_ps_size_ * 3);
 
   Kokkos::deep_copy(device_pos_view, host_pos_view);
 }
-
-// methods for PumiTallyImpl and ParticleAtElemBoundary
 
 void PumiTallyImpl::init_pumi_libs(int &argc, char **&argv) {
   pp_lib = std::make_unique<pumipic::Library>(&argc, &argv);
   oh_lib_ = pp_lib->omega_h_lib();
 }
 
-void move_to_next_element(PPPS *ptcls, Omega_h::Write<Omega_h::LO> &elem_ids,
-                          Omega_h::Write<Omega_h::LO> &next_elems) {
-  auto in_flight = ptcls->get<3>();
+void move_to_next_element(PPPS *ptcls,
+                          const Omega_h::Write<Omega_h::LO> &elem_ids,
+                          const Omega_h::Write<Omega_h::LO> &next_elems) {
+  const auto in_flight = ptcls->get<3>();
   auto move_to_next = PS_LAMBDA(const int e, const int pid, const int mask) {
     // move only if particle in flight and not leaving the domain
     if (mask > 0 && in_flight(pid) && next_elems[pid] != -1) {
@@ -473,21 +469,23 @@ void move_to_next_element(PPPS *ptcls, Omega_h::Write<Omega_h::LO> &elem_ids,
   pumipic::parallel_for(ptcls, move_to_next, "move to next element");
 }
 
-void apply_boundary_condition(Omega_h::Mesh &mesh, PPPS *ptcls,
-                              Omega_h::Write<Omega_h::LO> &elem_ids,
-                              Omega_h::Write<Omega_h::LO> &next_elems,
-                              Omega_h::Write<Omega_h::LO> &ptcl_done,
-                              Omega_h::Write<Omega_h::LO> &lastExit,
-                              Omega_h::Write<Omega_h::LO> &xFace,
-                              Omega_h::Write<Omega_h::Real> &inter_points) {
+void apply_boundary_condition(
+    const Omega_h::Mesh &mesh, PPPS *ptcls,
+    const Omega_h::Write<Omega_h::LO> &elem_ids,
+    const Omega_h::Write<Omega_h::LO> &next_elems,
+    const Omega_h::Write<Omega_h::LO> &ptcl_done,
+    const Omega_h::Write<Omega_h::LO> &lastExit,
+    const Omega_h::Write<Omega_h::LO> &xFace,
+    const Omega_h::Write<Omega_h::Real> &inter_points) {
 
   // TODO: make this a member variable of the struct
-  auto particle_destination = ptcls->get<1>();
+  const auto particle_destination = ptcls->get<1>();
   auto checkExposedEdges =
       PS_LAMBDA(const int e, const int pid, const int mask) {
     if (mask > 0 && !ptcl_done[pid]) {
-      bool reached_destination = (lastExit[pid] == -1);
-      bool hit_boundary = ((next_elems[pid] == -1) && (elem_ids[pid] != -1));
+      const bool reached_destination = (lastExit[pid] == -1);
+      const bool hit_boundary =
+          ((next_elems[pid] == -1) && (elem_ids[pid] != -1));
       ptcl_done[pid] =
           (reached_destination || hit_boundary) ? 1 : ptcl_done[pid];
 
@@ -504,27 +502,28 @@ void apply_boundary_condition(Omega_h::Mesh &mesh, PPPS *ptcls,
                         "apply vacumm boundary condition");
 }
 
-ParticleAtElemBoundary::ParticleAtElemBoundary(size_t nelems, size_t capacity)
-    : flux_(nelems, 0.0, "flux"),
-      prev_xpoint_(capacity * 3, 0.0, "prev_xpoint"), initial_(true) {
+ParticleAtElemBoundary::ParticleAtElemBoundary(const size_t nelems,
+                                               const size_t capacity)
+    : initial_(true), flux_(nelems, 0.0, "flux"),
+      prev_xpoint_(capacity * 3, 0.0, "prev_xpoint") {
   printf("[INFO] Particle handler at boundary with %d elements and %d "
          "x points size (3 * n_particles)\n",
          flux_.size(), prev_xpoint_.size());
 }
 
 void ParticleAtElemBoundary::operator()(
-    Omega_h::Mesh &mesh, pumitally::PPPS *ptcls,
-    Omega_h::Write<Omega_h::LO> &elem_ids,
-    Omega_h::Write<Omega_h::LO> &next_elems,
-    Omega_h::Write<Omega_h::LO> &inter_faces,
-    Omega_h::Write<Omega_h::LO> &lastExit,
-    Omega_h::Write<Omega_h::Real> &inter_points,
-    Omega_h::Write<Omega_h::LO> &ptcl_done,
+    const Omega_h::Mesh &mesh, pumitally::PPPS *ptcls,
+    const Omega_h::Write<Omega_h::LO> &elem_ids,
+    const Omega_h::Write<Omega_h::LO> &next_elems,
+    const Omega_h::Write<Omega_h::LO> &inter_faces,
+    const Omega_h::Write<Omega_h::LO> &lastExit,
+    const Omega_h::Write<Omega_h::Real> &inter_points,
+    const Omega_h::Write<Omega_h::LO> &ptcl_done,
     typeof(ptcls->get<0>()) origin_segment,
-    typeof(ptcls->get<1>()) dest_segment) {
+    typeof(ptcls->get<1>()) dest_segment) const {
   if (!initial_) {
     evaluateFlux(ptcls, inter_points, elem_ids, ptcl_done);
-    updatePrevXPoint(inter_points);
+    update_previous_xpoint(inter_points);
   }
   apply_boundary_condition(mesh, ptcls, elem_ids, next_elems, ptcl_done,
                            lastExit, inter_faces, inter_points);
@@ -535,8 +534,8 @@ void ParticleAtElemBoundary::mask_as_initial(bool initial) {
   initial_ = initial;
 }
 
-void ParticleAtElemBoundary::updatePrevXPoint(
-    Omega_h::Write<Omega_h::Real> &xpoints) {
+void ParticleAtElemBoundary::update_previous_xpoint(
+    const Omega_h::Write<Omega_h::Real> &xpoints) const {
   OMEGA_H_CHECK_PRINTF(xpoints.size() <= prev_xpoint_.size() &&
                            prev_xpoint_.size() != 0,
                        "xpoints size %d is greater than prev_xpoint size %d\n",
@@ -546,9 +545,9 @@ void ParticleAtElemBoundary::updatePrevXPoint(
   Omega_h::parallel_for(xpoints.size(), update, "update previous xpoints");
 }
 
-void ParticleAtElemBoundary::updatePrevXPoint(PPPS *ptcls) {
+void ParticleAtElemBoundary::update_previous_xpoint(PPPS *ptcls) const {
   // todo add checks of size
-  auto prev_xpoints_l = prev_xpoint_;
+  const auto prev_xpoints_l = prev_xpoint_;
   OMEGA_H_CHECK_PRINTF(
       ptcls->capacity() * 3 == prev_xpoints_l.size(),
       "Error: prev_xpoints_s are not size properly capacity %d size %d\n",
@@ -564,9 +563,9 @@ void ParticleAtElemBoundary::updatePrevXPoint(PPPS *ptcls) {
 }
 
 void ParticleAtElemBoundary::evaluateFlux(
-    PPPS *ptcls, Omega_h::Write<Omega_h::Real> xpoints,
-    Omega_h::Write<Omega_h::LO> elem_ids,
-    Omega_h::Write<Omega_h::LO> ptcl_done) {
+    PPPS *ptcls, const Omega_h::Write<Omega_h::Real> &xpoints,
+    const Omega_h::Write<Omega_h::LO> &elem_ids,
+    const Omega_h::Write<Omega_h::LO> &ptcl_done) const {
   // Omega_h::Real total_particles = ptcls->nPtcls();
   auto prev_xpoint = prev_xpoint_;
   auto flux = flux_;
@@ -577,42 +576,44 @@ void ParticleAtElemBoundary::evaluateFlux(
   auto evaluate_flux =
       PS_LAMBDA(const int &e, const int &pid, const int &mask) {
     if ((mask > 0) && (in_flight(pid) == 1) && !ptcl_done[pid]) {
-      Omega_h::Vector<3> dest = {xpoints_l[pid * 3 + 0], xpoints_l[pid * 3 + 1],
-                                 xpoints_l[pid * 3 + 2]};
-      Omega_h::Vector<3> orig = {prev_xpoint[pid * 3 + 0],
-                                 prev_xpoint[pid * 3 + 1],
-                                 prev_xpoint[pid * 3 + 2]};
+      const Omega_h::Vector<3> dest = {xpoints_l[pid * 3 + 0],
+                                       xpoints_l[pid * 3 + 1],
+                                       xpoints_l[pid * 3 + 2]};
+      const Omega_h::Vector<3> orig = {prev_xpoint[pid * 3 + 0],
+                                       prev_xpoint[pid * 3 + 1],
+                                       prev_xpoint[pid * 3 + 2]};
 
-      Omega_h::Real segment_length =
-          Omega_h::norm(dest - orig); // / total_particles;
+      // TODO: Get total number of particles and divide here
+      const Omega_h::Real segment_length = Omega_h::norm(dest - orig);
 
-      Omega_h::Real contribution = segment_length * p_wgt(pid);
+      const Omega_h::Real contribution = segment_length * p_wgt(pid);
       Kokkos::atomic_add(&flux[elem_ids[pid]], contribution);
     }
   };
   pumipic::parallel_for(ptcls, evaluate_flux, "flux evaluation loop");
 }
 
-Omega_h::Reals ParticleAtElemBoundary::normalizeFlux(Omega_h::Mesh &mesh) {
-  const Omega_h::LO nelems = mesh.nelems();
+Omega_h::Reals
+ParticleAtElemBoundary::normalizeFlux(Omega_h::Mesh &mesh) const {
   const auto &el2n = mesh.ask_down(Omega_h::REGION, Omega_h::VERT).ab2b;
   const auto &coords = mesh.coords();
-  auto flux = flux_;
+  const auto flux_l = flux_;
 
-  Omega_h::Write<Omega_h::Real> tet_volumes(flux_.size(), -1.0, "tet_volumes");
-  Omega_h::Write<Omega_h::Real> normalized_flux(flux_.size(), -1.0,
-                                                "normalized flux");
+  const Omega_h::Write<Omega_h::Real> tet_volumes(flux_.size(), -1.0,
+                                                  "tet_volumes");
+  const Omega_h::Write<Omega_h::Real> normalized_flux(flux_.size(), -1.0,
+                                                      "normalized flux");
 
-  auto normalize_flux_with_volume = OMEGA_H_LAMBDA(Omega_h::LO elem_id) {
+  auto normalize_flux_with_volume = OMEGA_H_LAMBDA(const Omega_h::LO elem_id) {
     const auto elem_verts = Omega_h::gather_verts<4>(el2n, elem_id);
     const auto elem_vert_coords =
         Omega_h::gather_vectors<4, 3>(coords, elem_verts);
 
-    auto b = Omega_h::simplex_basis<3, 3>(elem_vert_coords);
-    auto volume = Omega_h::simplex_size_from_basis(b);
+    const auto b = Omega_h::simplex_basis<3, 3>(elem_vert_coords);
+    const Omega_h::Real volume = Omega_h::simplex_size_from_basis(b);
 
     tet_volumes[elem_id] = volume;
-    normalized_flux[elem_id] = flux[elem_id] / volume;
+    normalized_flux[elem_id] = flux_l[elem_id] / volume;
   };
   Omega_h::parallel_for(tet_volumes.size(), normalize_flux_with_volume,
                         "normalize flux");
@@ -621,8 +622,8 @@ Omega_h::Reals ParticleAtElemBoundary::normalizeFlux(Omega_h::Mesh &mesh) {
   return {normalized_flux};
 }
 
-void ParticleAtElemBoundary::finalizeAndWriteFlux(Omega_h::Mesh &full_mesh,
-                                                  const std::string &filename) {
+void ParticleAtElemBoundary::finalizeAndWriteFlux(
+    Omega_h::Mesh &full_mesh, const std::string &filename) const {
   const auto &normalized_flux = normalizeFlux(full_mesh);
   full_mesh.add_tag(Omega_h::REGION, "flux", 1, normalized_flux);
   Omega_h::vtk::write_parallel(filename, &full_mesh, 3);
@@ -642,10 +643,8 @@ void pumiUpdatePtclPositions(PPPS *ptcls) {
   ps::parallel_for(ptcls, updatePtclPos);
 }
 
-// search and update parent elements
-//! @param initial initial search finds the initial location of the particles
-//! and doesn't tally
-void PumiTallyImpl::search_and_rebuild(bool initial, const bool migrate) {
+void PumiTallyImpl::search_and_rebuild(const bool initial,
+                                       const bool migrate) const {
   // initial cannot be false when is_pumipic_initialized_ is false
   // may fail if simulated more than one batch
   assert((is_pumipic_initialized_ == false && initial == true) ||
@@ -661,20 +660,19 @@ void PumiTallyImpl::search_and_rebuild(bool initial, const bool migrate) {
 
   // total tracklengths are used to calculate the flux
   if (!initial) {
-    p_pumi_particle_at_elem_boundary_handler->updatePrevXPoint(
+    p_pumi_particle_at_elem_boundary_handler->update_previous_xpoint(
         pumipic_ptcls.get());
   }
 
-  bool isFoundAll = p_particle_tracer_->search(migrate);
-
+  const bool isFoundAll = p_particle_tracer_->search(migrate);
   if (!isFoundAll) {
     printf(
         "ERROR: Not all particles are found. May need more loops in search\n");
   }
 }
 
-std::unique_ptr<PPPS> pp_create_particle_structure(Omega_h::Mesh mesh,
-                                                   pumipic::lid_t numPtcls) {
+std::unique_ptr<PPPS> create_particle_ds(const Omega_h::Mesh &mesh,
+                                         pumipic::lid_t numPtcls) {
   Omega_h::Int ne = mesh.nelems();
   pumitally::PPPS::kkLidView ptcls_per_elem("ptcls_per_elem", ne);
   pumitally::PPPS::kkGidView element_gids("element_gids", ne);
@@ -685,7 +683,7 @@ std::unique_ptr<PPPS> pp_create_particle_structure(Omega_h::Mesh mesh,
       ne, OMEGA_H_LAMBDA(const Omega_h::LO &i) { element_gids(i) = i; });
 
   Omega_h::parallel_for(
-      mesh.nelems(), OMEGA_H_LAMBDA(Omega_h::LO id) {
+      mesh.nelems(), OMEGA_H_LAMBDA(const Omega_h::LO id) {
         ptcls_per_elem[id] = (id == 0) ? numPtcls : 0;
       });
 
@@ -704,17 +702,16 @@ std::unique_ptr<PPPS> pp_create_particle_structure(Omega_h::Mesh mesh,
   return ptcls;
 }
 
-void start_pumi_particles_in_0th_element(Omega_h::Mesh &mesh,
-                                         pumitally::PPPS *ptcls) {
+void start_particles_in_element0(Omega_h::Mesh &mesh, pumitally::PPPS *ptcls) {
   // find the centroid of the 0th element
   const auto &coords = mesh.coords();
   const auto &tet2node = mesh.ask_down(Omega_h::REGION, Omega_h::VERT).ab2b;
 
   Omega_h::Write<Omega_h::Real> centroid_of_el0(3, 0.0, "centroid");
 
-  auto find_centroid_of_el0 = OMEGA_H_LAMBDA(Omega_h::LO id) {
+  auto find_centroid_of_el0 = OMEGA_H_LAMBDA(const Omega_h::LO id) {
     const auto nodes = Omega_h::gather_verts<4>(tet2node, id);
-    Omega_h::Few<Omega_h::Vector<3>, 4> tet_node_coords =
+    const Omega_h::Few<Omega_h::Vector<3>, 4> tet_node_coords =
         Omega_h::gather_vectors<4, 3>(coords, nodes);
     const auto centroid = o::average(tet_node_coords);
     centroid_of_el0[0] = centroid[0];
@@ -742,8 +739,8 @@ void start_pumi_particles_in_0th_element(Omega_h::Mesh &mesh,
                         "set initial particle positions");
 }
 
-Omega_h::Mesh *PumiTallyImpl::partition_pumipic_mesh() {
-  Omega_h::Write<Omega_h::LO> owners(full_mesh_.nelems(), 0, "owners");
+Omega_h::Mesh PumiTallyImpl::partition_pumipic_mesh() {
+  const Omega_h::Write<Omega_h::LO> owners(full_mesh_.nelems(), 0, "owners");
   // all the particles are initialized in element 0 to do an initial search to
   // find the starting locations
   // of the openmc given particles.
@@ -751,17 +748,17 @@ Omega_h::Mesh *PumiTallyImpl::partition_pumipic_mesh() {
   p_picparts_ =
       std::make_unique<pumipic::Mesh>(full_mesh_, Omega_h::LOs(owners));
   printf("PumiPIC mesh partitioned\n");
-  Omega_h::Mesh *mesh = p_picparts_->mesh();
-  return mesh;
+
+  return *p_picparts_->mesh();
 }
 
 void PumiTallyImpl::create_and_initialize_pumi_particle_structure(
-    Omega_h::Mesh *mesh) {
-  pumipic_ptcls = pp_create_particle_structure(*mesh, pumi_ps_size);
-  start_pumi_particles_in_0th_element(*mesh, pumipic_ptcls.get());
+    Omega_h::Mesh &mesh) {
+  pumipic_ptcls = create_particle_ds(mesh, pumi_ps_size_);
+  start_particles_in_element0(mesh, pumipic_ptcls.get());
   p_pumi_particle_at_elem_boundary_handler =
       std::make_unique<pumitally::ParticleAtElemBoundary>(
-          mesh->nelems(), pumipic_ptcls->capacity());
+          mesh.nelems(), pumipic_ptcls->capacity());
 
   printf("PumiPIC Mesh and data structure created with %d and %d as particle "
          "structure capacity\n",
@@ -770,40 +767,40 @@ void PumiTallyImpl::create_and_initialize_pumi_particle_structure(
 
 void PumiTallyImpl::read_pumipic_lib_and_full_mesh(int &argc, char **&argv) {
   printf("Reading the Omega_h mesh %s to tally with tracklength estimator\n",
-         oh_mesh_fname.c_str());
+         oh_mesh_filename_.c_str());
   init_pumi_libs(argc, argv);
 
-  if (oh_mesh_fname.empty()) {
+  if (oh_mesh_filename_.empty()) {
     printf("[ERROR] Omega_h mesh for PumiPIC is not given. Provide --ohMesh = "
            "<osh file>");
   }
-  full_mesh_ = Omega_h::binary::read(oh_mesh_fname, &oh_lib_);
+  full_mesh_ = Omega_h::binary::read(oh_mesh_filename_, &oh_lib_);
   if (full_mesh_.dim() != 3) {
     printf("PumiPIC only works for 3D mesh now.\n");
   }
-  printf("PumiPIC Loaded mesh %s with %d elements\n", oh_mesh_fname.c_str(),
+  printf("PumiPIC Loaded mesh %s with %d elements\n", oh_mesh_filename_.c_str(),
          full_mesh_.nelems());
 }
 
 void PumiTallyImpl::load_pumipic_mesh_and_init_particles(int &argc,
                                                          char **&argv) {
   read_pumipic_lib_and_full_mesh(argc, argv);
-  Omega_h::Mesh *mesh = partition_pumipic_mesh();
+  Omega_h::Mesh mesh = partition_pumipic_mesh();
   create_and_initialize_pumi_particle_structure(mesh);
 }
 
-PumiTally::PumiTally(std::string &mesh_filename, int64_t num_particles,
-                     int &argc, char **&argv)
+PumiTally::PumiTally(const std::string &mesh_filename,
+                     const int64_t num_particles, int &argc, char **&argv)
     : pimpl(std::make_unique<PumiTallyImpl>(mesh_filename, num_particles, argc,
                                             argv)) {}
 
 void PumiTally::initialize_particle_location(double *init_particle_positions,
-                                             int64_t size) {
-  auto start_time = std::chrono::steady_clock::now();
+                                             const int64_t size) const {
+  const auto start_time = std::chrono::steady_clock::now();
 
   pimpl->initialize_particle_location(init_particle_positions, size);
 
-  std::chrono::duration<double> elapsed_seconds =
+  const std::chrono::duration<double> elapsed_seconds =
       std::chrono::steady_clock::now() - start_time;
   pimpl->tally_times.initialization_time += elapsed_seconds.count();
 }
@@ -811,23 +808,23 @@ void PumiTally::initialize_particle_location(double *init_particle_positions,
 void PumiTally::move_to_next_location(double *particle_origin,
                                       double *particle_destinations,
                                       int8_t *flying, double *weights,
-                                      int64_t size) {
-  auto start_time = std::chrono::steady_clock::now();
+                                      const int64_t size) const {
+  const auto start_time = std::chrono::steady_clock::now();
 
   pimpl->move_to_next_location(particle_origin, particle_destinations, flying,
                                weights, size);
 
-  std::chrono::duration<double> elapsed_seconds =
+  const std::chrono::duration<double> elapsed_seconds =
       std::chrono::steady_clock::now() - start_time;
   pimpl->tally_times.total_time_to_tally += elapsed_seconds.count();
 }
 
-void PumiTally::write_pumi_tally_mesh() {
-  auto start_time = std::chrono::steady_clock::now();
+void PumiTally::write_pumi_tally_mesh() const {
+  const auto start_time = std::chrono::steady_clock::now();
 
   pimpl->write_pumi_tally_mesh();
 
-  std::chrono::duration<double> elapsed_seconds =
+  const std::chrono::duration<double> elapsed_seconds =
       std::chrono::steady_clock::now() - start_time;
   pimpl->tally_times.vtk_file_write_time += elapsed_seconds.count();
   pimpl->tally_times.print_times();

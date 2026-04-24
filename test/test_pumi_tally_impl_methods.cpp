@@ -186,8 +186,8 @@ TEST_CASE("Test Impl Class Functions") {
   { // * Check copy data to device and reset flying
     std::vector<int8_t> flying(num_ptcls, 1); // all are flying now
 
-    REQUIRE(particle_destination.size() == 3 * p_pumi_tallyimpl->pumi_ps_size);
-    p_pumi_tallyimpl->copy_data_to_device(particle_destination.data());
+    REQUIRE(particle_destination.size() == 3 * p_pumi_tallyimpl->pumi_ps_size_);
+    p_pumi_tallyimpl->copy_coordinates_to_device(particle_destination.data());
     p_pumi_tallyimpl->copy_and_reset_flying_flag(flying.data());
     p_pumi_tallyimpl->copy_weights(weights.data());
 

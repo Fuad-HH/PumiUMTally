@@ -47,7 +47,7 @@ public:
    * meshes are stored as directories.
    * @n `argc` and `argv` are takes for MPI and Kokkos inputs.
    */
-  PumiTally(std::string &mesh_filename, int64_t num_particles, int &argc,
+  PumiTally(const std::string &mesh_filename, int64_t num_particles, int &argc,
             char **&argv);
 
   /**
@@ -64,7 +64,7 @@ public:
    * called once after the source initialization.
    */
   void initialize_particle_location(double *init_particle_positions,
-                                    int64_t size);
+                                    int64_t size) const;
 
   /**
    * Track particles to a new location and tally
@@ -86,13 +86,13 @@ public:
    */
   void move_to_next_location(double *particle_origin,
                              double *particle_destinations, int8_t *flying,
-                             double *weights, int64_t size);
+                             double *weights, int64_t size) const;
 
   /**
    * @brief Write the mesh tally to a VTK file
    * @details Normalized by element volumes and total number of particles
    */
-  void write_pumi_tally_mesh();
+  void write_pumi_tally_mesh() const;
 
   /**
    * @brief PUMI-Tally Destructor
