@@ -226,11 +226,18 @@ Results are written to `fluxresult.vtk`.
 
 ## How it works
 
-1. Copy particle origins, destinations, and auxiliary data from the transport code.
-2. Move particles to their destinations using mesh adjacency search.
-3. Accumulate track-length tallies per element.
+PUMI-Tally decouples tally operations from OpenMC via the [PIMPL idiom](https://www.geeksforgeeks.org/cpp/pimpl-idiom-in-c-with-examples/), so OpenMC does not need to link against PUMIPic, Kokkos, or any GPU compiler. Transport runs on the CPU or GPU based on the physics application that connects to it
+(for example, [OpenMC](https://github.com/openmc-dev/openmc) runs on the CPU); tallies run on the CPU or GPU (however `Kokkos` is compiled) through a batched interface of three calls:
+
+1. **`PumiTally` and `CopyInitialPosition`** — Initializes the PUMI-Tally object and localizes particles to their parent mesh elements based on the physics application's source sampling strategy.
+2. **`MoveToNextLocation`** — copies particle destinations, weights, and status from OpenMC to the device, then walks each particle through the mesh element-by-element using adjacency information, accumulating track-length tallies per element via atomics — no dynamic allocations or re-localization trees needed.
+3. **`WriteTallyResults`** — writes the accumulated tallies to disk (currently VTK only).
+
+
 
 ![Detailed explanation of library public methods](images/public_methods_explanation.svg)
+
+*High-level API of PUMI-Tally in OpenMC.*
 
 ## Citation
 
