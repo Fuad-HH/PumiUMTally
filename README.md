@@ -42,7 +42,7 @@ You may not need DAGMC but it installs OpenMC with DAGMC support by default.
 Change the DAGMC spec off if you don't need it.
 
 > [!Tip]
-> For CUDA, use `^kokkos+cuda cuda_arch=<arch_code>` instead.
+> For tallying on the GPUs, use `^kokkos+cuda cuda_arch=<arch_code>` instead. Check `spack info pumi-tally` for the supported architectures.
 
 Verify the installation:
 
@@ -55,103 +55,11 @@ spack find pumi-tally
 ```
 
 ### Option 2: Build from source
+PUMI-Tally involves many dependencies and is complex to build from source. A complete build instruction for platform-specific
+versions is provided in the [PUMIPic Wiki](https://github.com/SCOREC/pumi-pic/wiki). Use this install PUMIPic. Be sure
+to install the [make_search_class](https://github.com/Fuad-HH/pumi-pic/tree/make_search_class) branch of PUMIPic.
 
-#### Prerequisites
-
-- C/C++ compiler (GCC 12+ recommended)
-- MPI (e.g. MPICH)
-- CMake >= 3.20
-- zlib
-
-Set a common install prefix for all dependencies:
-
-```bash
-export DEPS_DIR=$PWD/deps
-```
-
-#### 1. Kokkos
-
-```bash
-git clone --depth 1 --branch 4.7.00 https://github.com/kokkos/kokkos.git /tmp/kokkos
-cmake -S /tmp/kokkos -B /tmp/kokkos/build \
-  -DCMAKE_INSTALL_PREFIX=$DEPS_DIR \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DKokkos_ENABLE_SERIAL=ON \
-  -DKokkos_ENABLE_OPENMP=ON \
-  -DBUILD_SHARED_LIBS=ON
-cmake --build /tmp/kokkos/build -j$(nproc)
-cmake --install /tmp/kokkos/build
-```
-
-> [!TIP]
-> For CUDA support add `-DKokkos_ENABLE_CUDA=ON -DKokkos_ARCH_<arch>=ON`.
-
-#### 2. EnGPar
-
-```bash
-git clone --depth 1 https://github.com/SCOREC/EnGPar.git /tmp/engpar
-cmake -S /tmp/engpar -B /tmp/engpar/build \
-  -DCMAKE_INSTALL_PREFIX=$DEPS_DIR \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_CXX_COMPILER=mpicxx \
-  -DCMAKE_C_COMPILER=mpicc \
-  -DENABLE_PARMETIS=OFF \
-  -DENABLE_PUMI=OFF \
-  -DBUILD_SHARED_LIBS=ON
-cmake --build /tmp/engpar/build -j$(nproc)
-cmake --install /tmp/engpar/build
-```
-
-#### 3. Omega_h
-
-```bash
-git clone --depth 1 --branch scorec-v11.0.0 https://github.com/SCOREC/omega_h.git /tmp/omega_h
-cmake -S /tmp/omega_h -B /tmp/omega_h/build \
-  -DCMAKE_INSTALL_PREFIX=$DEPS_DIR \
-  -DCMAKE_PREFIX_PATH=$DEPS_DIR \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_CXX_COMPILER=mpicxx \
-  -DCMAKE_C_COMPILER=mpicc \
-  -DOmega_h_USE_Kokkos=ON \
-  -DOmega_h_USE_MPI=ON \
-  -DOmega_h_USE_ZLIB=ON \
-  -DBUILD_SHARED_LIBS=ON
-cmake --build /tmp/omega_h/build -j$(nproc)
-cmake --install /tmp/omega_h/build
-```
-
-#### 4. Cabana
-
-```bash
-git clone --depth 1 --branch 0.6.1 https://github.com/ECP-CoPA/Cabana.git /tmp/cabana
-cmake -S /tmp/cabana -B /tmp/cabana/build \
-  -DCMAKE_INSTALL_PREFIX=$DEPS_DIR \
-  -DCMAKE_PREFIX_PATH=$DEPS_DIR \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_CXX_COMPILER=mpicxx \
-  -DCMAKE_C_COMPILER=mpicc \
-  -DBUILD_SHARED_LIBS=ON
-cmake --build /tmp/cabana/build -j$(nproc)
-cmake --install /tmp/cabana/build
-```
-
-#### 5. PUMIPic
-
-```bash
-git clone --depth 1 --branch make_search_class https://github.com/Fuad-HH/pumi-pic.git /tmp/pumi-pic
-cmake -S /tmp/pumi-pic -B /tmp/pumi-pic/build \
-  -DCMAKE_INSTALL_PREFIX=$DEPS_DIR \
-  -DCMAKE_PREFIX_PATH=$DEPS_DIR \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_CXX_COMPILER=mpicxx \
-  -DCMAKE_C_COMPILER=mpicc \
-  -DENABLE_CABANA=ON \
-  -DBUILD_SHARED_LIBS=ON
-cmake --build /tmp/pumi-pic/build -j$(nproc)
-cmake --install /tmp/pumi-pic/build
-```
-
-#### 6. PUMI-Tally
+#### Build PUMI-Tally
 
 ```bash
 cmake -S . -B build \
@@ -161,15 +69,14 @@ cmake -S . -B build \
   -DCMAKE_C_COMPILER=mpicc \
   -DCMAKE_INSTALL_PREFIX=$DEPS_DIR \
   -DBUILD_SHARED_LIBS=ON
-cmake --build build -j$(nproc)
-cmake --install build
+cmake --build build -j$(nproc) --target install
 ```
 
 > [!TIP]
 > Add `-DPUMI_USE_KOKKOS_CUDA=ON` when building with CUDA.
 > Add `-DPUMITALLYOPENMC_ENABLE_TESTS=ON` to build the test suite (requires [Catch2 v3.4.0](https://github.com/catchorg/Catch2)).
 
-#### 7. OpenMC with PUMI-Tally (optional)
+#### OpenMC with PUMI-Tally (optional)
 
 PUMI-Tally currently works with a [specific fork of OpenMC](https://github.com/Fuad-HH/openmc/tree/decouple_pumi_tally). HDF5 with MPI and high-level API support is required.
 
@@ -186,8 +93,7 @@ cmake -S /tmp/openmc -B /tmp/openmc/build \
   -DOPENMC_USE_MPI=ON \
   -DOPENMC_USE_OPENMP=ON \
   -DOPENMC_USE_PUMIPIC=ON
-cmake --build /tmp/openmc/build -j$(nproc)
-cmake --install /tmp/openmc/build
+cmake --build /tmp/openmc/build -j$(nproc) --target install
 ```
 This will install OpenMC without DAGMC support. To enable DAGMC, install DAGMC first using the instructions in [DAGMC Website](https://svalinn.github.io/DAGMC/install/openmc.html).
 
