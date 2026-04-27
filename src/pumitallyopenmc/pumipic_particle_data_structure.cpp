@@ -104,8 +104,8 @@ struct ParticleAtElemBoundary {
                   const Omega_h::Write<Omega_h::LO> &last_exit,
                   const Omega_h::Write<Omega_h::Real> &inter_points,
                   const Omega_h::Write<Omega_h::LO> &ptcl_done,
-                  typeof(ptcls->get<0>()) origin_segment,
-                  typeof(ptcls->get<1>()) dest_segment) const;
+                  typeof(ptcls->get<0>()) origin_segment, // NOLINT(performance-unnecessary-value-param)
+                  typeof(ptcls->get<1>()) dest_segment) const; // NOLINT(performance-unnecessary-value-param)
   /**
    * Save the current intersection points
    * @param xpoints Intersection points (flat: x0,y0,z0,x1,y1,z1,...)
@@ -517,8 +517,8 @@ void ParticleAtElemBoundary::operator()(
     const Omega_h::Write<Omega_h::LO> &last_exit,
     const Omega_h::Write<Omega_h::Real> &inter_points,
     const Omega_h::Write<Omega_h::LO> &ptcl_done,
-    typeof(ptcls->get<0>()) origin_segment,
-    typeof(ptcls->get<1>()) dest_segment) const {
+    typeof(ptcls->get<0>()) origin_segment, // NOLINT(performance-unnecessary-value-param)
+    typeof(ptcls->get<1>()) dest_segment) const { // NOLINT(performance-unnecessary-value-param)
   if (!is_initial_track) {
     EvaluateFlux(ptcls, inter_points, elem_ids, ptcl_done);
     UpdatePreviousXPoints(inter_points);

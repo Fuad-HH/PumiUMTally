@@ -105,6 +105,20 @@ runs:
         cmake --build /tmp/cabana/build -j$(nproc)
         cmake --install /tmp/cabana/build
 
+    - name: Build Catch2
+      if: steps.cache-deps.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        git clone --depth 1 --branch v3.4.0 https://github.com/catchorg/Catch2.git /tmp/catch2
+        cmake -S /tmp/catch2 -B /tmp/catch2/build \
+          -DCMAKE_INSTALL_PREFIX=${{ inputs.deps-dir }} \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_CXX_COMPILER=g++-12 \
+          -DCMAKE_C_COMPILER=gcc-12 \
+          -DBUILD_SHARED_LIBS=ON
+        cmake --build /tmp/catch2/build -j$(nproc)
+        cmake --install /tmp/catch2/build
+
     - name: Build pumi-pic
       if: steps.cache-deps.outputs.cache-hit != 'true'
       shell: bash
