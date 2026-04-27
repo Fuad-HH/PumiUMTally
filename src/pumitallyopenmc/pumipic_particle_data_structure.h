@@ -6,6 +6,7 @@
 #ifndef PUMITALLYOPENMC_PUMIPIC_PARTICLE_DATA_STRUCTURE_H
 #define PUMITALLYOPENMC_PUMIPIC_PARTICLE_DATA_STRUCTURE_H
 
+#include <cstdint>
 #include <memory>
 
 /**
@@ -20,8 +21,8 @@ namespace pumitally {
  * Evaluates flux and its auxiliary operations after crossing element
  * boundaries.
  */
-class ParticleAtElemBoundary;
-class PumiTallyImpl;
+struct ParticleAtElemBoundary;
+struct PumiTallyImpl;
 
 /**
  * @brief PUMI-Tally Interface Class
@@ -47,11 +48,11 @@ public:
    * meshes are stored as directories.
    * @n `argc` and `argv` are takes for MPI and Kokkos inputs.
    */
-  PumiTally(const std::string &mesh_filename, int64_t num_particles, int &argc,
+  PumiTally(const std::string &mesh_filename, int32_t num_particles, int &argc,
             char **&argv);
 
   /**
-   * Perform the initial search
+   * Perform the is_initial_track search
    * @param init_particle_positions Positions of the particles flattened as x1,
    * y1, z1, x2, y2, ...
    * @param size Number of particles
@@ -63,8 +64,8 @@ public:
    * is done to find the starting position of the particles. This can be only
    * called once after the source initialization.
    */
-  void initialize_particle_location(double *init_particle_positions,
-                                    int64_t size) const;
+  void CopyInitialPosition(double *init_particle_positions,
+                           std::int32_t size) const;
 
   /**
    * Track particles to a new location and tally
@@ -84,15 +85,15 @@ public:
    * at a new location. Then they move to the destination. They are not tallied
    * when moving to the origin (first step).
    */
-  void move_to_next_location(double *particle_origin,
-                             double *particle_destinations, int8_t *flying,
-                             double *weights, int64_t size) const;
+  void MoveToNextLocation(double *particle_origin,
+                          double *particle_destinations, int8_t *flying,
+                          double *weights, int32_t size) const;
 
   /**
    * @brief Write the mesh tally to a VTK file
    * @details Normalized by element volumes and total number of particles
    */
-  void write_pumi_tally_mesh() const;
+  void WriteTallyResults() const;
 
   /**
    * @brief PUMI-Tally Destructor
@@ -103,7 +104,7 @@ public:
   ~PumiTally();
 
 private:
-  std::unique_ptr<PumiTallyImpl> pimpl; //!< @ref PumiTallyImpl holder
+  std::unique_ptr<PumiTallyImpl> pimpl_; //!< @ref PumiTallyImpl holder
 };
 } // namespace pumitally
 

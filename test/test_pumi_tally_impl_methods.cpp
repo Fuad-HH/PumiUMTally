@@ -5,6 +5,7 @@
 #include <Omega_h_library.hpp>
 #include <Omega_h_vtk.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <cstddef>
 
 // ********************************** Notes
 // ************************************************************//
@@ -38,7 +39,7 @@ TEST_CASE("Test Impl Class Functions") {
          mesh.nfaces());
 
   // create particle structure with 5 particles
-  int num_ptcls = 5;
+  size_t num_ptcls = 5;
 
   // TODO remove this read_write
   int argc = 0;
@@ -58,20 +59,20 @@ TEST_CASE("Test Impl Class Functions") {
   fprintf(stdout, "[INFO] Particle structure created successfully\n");
 
   { // * Check other array sizes
-    auto device_pos_l = p_pumi_tallyimpl->device_pos_buffer_;
-    auto device_adv_l = p_pumi_tallyimpl->device_in_adv_que_;
-    auto device_wgt_l = p_pumi_tallyimpl->weights_;
+    auto device_pos_l = p_pumi_tallyimpl->position_dev_buffer;
+    auto device_adv_l = p_pumi_tallyimpl->flying_dev_buffer;
+    auto device_wgt_l = p_pumi_tallyimpl->weights_dev_buffer;
 
     REQUIRE(device_pos_l.size() == num_ptcls * 3);
     REQUIRE(device_adv_l.size() == num_ptcls);
     REQUIRE(device_wgt_l.size() == num_ptcls);
 
     // * Check full mesh
-    REQUIRE(p_pumi_tallyimpl->full_mesh_.nelems() == 6);
-    REQUIRE(p_pumi_tallyimpl->full_mesh_.dim() == 3);
+    REQUIRE(p_pumi_tallyimpl->full_mesh.nelems() == 6);
+    REQUIRE(p_pumi_tallyimpl->full_mesh.dim() == 3);
 
     // * Check the picparts
-    REQUIRE(p_pumi_tallyimpl->p_picparts_->isFullMesh() == true);
+    REQUIRE(p_pumi_tallyimpl->p_picparts->isFullMesh() == true);
 
     // * Check created particle structure
     REQUIRE(p_pumi_tallyimpl->pumipic_ptcls->nPtcls() == num_ptcls);
@@ -118,18 +119,19 @@ TEST_CASE("Test Impl Class Functions") {
     // ray_origin   =   [0.1, 0.4, 0.5] in cell 2
     // ray_end      =   [1.1, 0.4, 0.5] passing through cells 2, 3, 4 and
     // finally leaving the box
-    for (int pid = 0; pid < num_ptcls; ++pid) {
+    for (size_t pid = 0; pid < num_ptcls; ++pid) {
       init_particle_positions[pid * 3] = 0.1;
       init_particle_positions[pid * 3 + 1] = 0.4;
       init_particle_positions[pid * 3 + 2] = 0.5;
     }
-    p_pumi_tallyimpl->initialize_particle_location(
-        init_particle_positions.data(), init_particle_positions.size());
+    p_pumi_tallyimpl->CopyInitialPositionToBuffer(
+        init_particle_positions.data(),
+        static_cast<Omega_h::LO>(init_particle_positions.size()));
 
     { // * Check if particle positions are copied properly in the device
       // ? is it okay to check with OMEGA_H_CHECK
-      auto device_pos_buffer_l = p_pumi_tallyimpl->device_pos_buffer_;
-      auto check_device_init_pos = OMEGA_H_LAMBDA(int pid) {
+      auto device_pos_buffer_l = p_pumi_tallyimpl->position_dev_buffer;
+      auto check_device_init_pos = OMEGA_H_LAMBDA(const Omega_h::LO pid) {
         OMEGA_H_CHECK_PRINTF(
             is_close_d(device_pos_buffer_l[pid * 3], 0.1),
             "Particle position copy to device error 0: %.16f %.16f\n",
@@ -144,14 +146,14 @@ TEST_CASE("Test Impl Class Functions") {
             device_pos_buffer_l[pid * 3 + 2], 0.5);
       };
       Omega_h::parallel_for(
-          num_ptcls, check_device_init_pos,
+          static_cast<Omega_h::LO>(num_ptcls), check_device_init_pos,
           "Check if the init particle pos are copied to device correctly");
     }
   }
 
   { // * Check if all particles reached element 2
     auto elem_ids_host = Omega_h::HostRead<Omega_h::LO>(
-        p_pumi_tallyimpl->p_particle_tracer_->getElementIds());
+        p_pumi_tallyimpl->p_particle_tracer->getElementIds());
     REQUIRE(elem_ids_host.size() ==
             p_pumi_tallyimpl->pumipic_ptcls->capacity());
     for (int pid = 0; pid < num_ptcls; ++pid) {
@@ -160,7 +162,7 @@ TEST_CASE("Test Impl Class Functions") {
 
     // * The fluxes should be zero since the init doesn't calculate flux
     auto flux_l =
-        p_pumi_tallyimpl->p_pumi_particle_at_elem_boundary_handler->flux_;
+        p_pumi_tallyimpl->p_pumi_particle_at_elem_boundary_handler->flux;
     Omega_h::HostWrite<Omega_h::Real> flux_host(flux_l);
     REQUIRE(flux_host.size() == mesh.nelems());
     for (int el = 0; el < flux_host.size(); ++el) {
@@ -177,7 +179,7 @@ TEST_CASE("Test Impl Class Functions") {
   std::vector<double> particle_destination(num_ptcls * 3);
   std::vector<double> weights(num_ptcls, 1.0); // same weights
 
-  for (int pid = 0; pid < num_ptcls; ++pid) {
+  for (size_t pid = 0; pid < num_ptcls; ++pid) {
     particle_destination[pid * 3] = 1.2;
     particle_destination[pid * 3 + 1] = 0.4;
     particle_destination[pid * 3 + 2] = 0.5;
@@ -186,17 +188,17 @@ TEST_CASE("Test Impl Class Functions") {
   { // * Check copy data to device and reset flying
     std::vector<int8_t> flying(num_ptcls, 1); // all are flying now
 
-    REQUIRE(particle_destination.size() == 3 * p_pumi_tallyimpl->pumi_ps_size_);
-    p_pumi_tallyimpl->copy_coordinates_to_device(particle_destination.data());
-    p_pumi_tallyimpl->copy_and_reset_flying_flag(flying.data());
-    p_pumi_tallyimpl->copy_weights(weights.data());
+    REQUIRE(particle_destination.size() == 3 * p_pumi_tallyimpl->num_particles);
+    p_pumi_tallyimpl->CopyLocationsToBuffer(particle_destination.data());
+    p_pumi_tallyimpl->CopyFlyingFlagToBuffer(flying.data());
+    p_pumi_tallyimpl->CopyWeightsToBuffer(weights.data());
 
-    auto particle_destinations_l = p_pumi_tallyimpl->device_pos_buffer_;
+    auto particle_destinations_l = p_pumi_tallyimpl->position_dev_buffer;
     Omega_h::HostWrite<Omega_h::Real> particle_destination_l_host(
         particle_destinations_l);
-    auto particle_weight_l = p_pumi_tallyimpl->weights_;
+    auto particle_weight_l = p_pumi_tallyimpl->weights_dev_buffer;
     Omega_h::HostWrite<Omega_h::Real> particle_weight_l_host(particle_weight_l);
-    auto particle_flying_l = p_pumi_tallyimpl->device_in_adv_que_;
+    auto particle_flying_l = p_pumi_tallyimpl->flying_dev_buffer;
     Omega_h::HostWrite<Omega_h::I8> particle_flying_l_host(particle_flying_l);
 
     for (int pid = 0; pid < num_ptcls; ++pid) {
@@ -213,13 +215,13 @@ TEST_CASE("Test Impl Class Functions") {
 
   {                                           // not a check, just move
     std::vector<int8_t> flying(num_ptcls, 1); // reset them again to 1
-    p_pumi_tallyimpl->move_to_next_location(
+    p_pumi_tallyimpl->MoveToNextLocation(
         init_particle_positions.data(), particle_destination.data(),
         flying.data(), weights.data(), particle_destination.size());
   }
 
   { // * Check if the particles correctly reaches element 4
-    auto elem_ids_local = p_pumi_tallyimpl->p_particle_tracer_->getElementIds();
+    auto elem_ids_local = p_pumi_tallyimpl->p_particle_tracer->getElementIds();
     Omega_h::HostRead<Omega_h::LO> elem_ids_local_host(elem_ids_local);
     for (int pid = 0; pid < num_ptcls; ++pid) {
       printf("[INFO] Particles reached elem %d\n", elem_ids_local_host[pid]);
@@ -268,7 +270,7 @@ TEST_CASE("Test Impl Class Functions") {
     // * Note: The particles are going through elems 2, 3, 4. The lengths are:
     // 0.3, 0.1, and 0.5 (times 5 for 5 particles)
     auto flux_local =
-        p_pumi_tallyimpl->p_pumi_particle_at_elem_boundary_handler->flux_;
+        p_pumi_tallyimpl->p_pumi_particle_at_elem_boundary_handler->flux;
     Omega_h::HostWrite<Omega_h::Real> flux_host(flux_local);
     printf("The fluxes are %d[%f] %d[%f] %d[%f] %d[%f] %d[%f] %d[%f]\n", 0,
            flux_host[0], 1, flux_host[1], 2, flux_host[2], 3, flux_host[3], 4,
@@ -315,7 +317,7 @@ TEST_CASE("Test Impl Class Functions") {
         particle_weights[pid] = 1;
       }
     }
-    p_pumi_tallyimpl->move_to_next_location(
+    p_pumi_tallyimpl->MoveToNextLocation(
         init_particle_positions.data(), next_positions.data(),
         flying_flags.data(), particle_weights.data(), next_positions.size());
     // ***********************************************************************************************************//
@@ -346,8 +348,7 @@ TEST_CASE("Test Impl Class Functions") {
     }
 
     { // check destination element
-      auto elem_id_local =
-          p_pumi_tallyimpl->p_particle_tracer_->getElementIds();
+      auto elem_id_local = p_pumi_tallyimpl->p_particle_tracer->getElementIds();
       Omega_h::HostRead<Omega_h::LO> elem_id_host(elem_id_local);
       printf("After the 2nd move, the current ids are: %d, %d, %d, %d, %d\n",
              elem_id_host[0], elem_id_host[1], elem_id_host[2], elem_id_host[3],
@@ -367,12 +368,13 @@ TEST_CASE("Test Impl Class Functions") {
       // in 4 and 3 respectively
       //* segment length of 5 is:b 0.552268050859363 in 4
       auto flux_local =
-          p_pumi_tallyimpl->p_pumi_particle_at_elem_boundary_handler->flux_;
+          p_pumi_tallyimpl->p_pumi_particle_at_elem_boundary_handler->flux;
       Omega_h::HostWrite<Omega_h::Real> flux_host(flux_local);
       Omega_h::HostWrite<Omega_h::Real> flux_expected(flux_local);
-      flux_expected[3] = 0.1 * num_ptcls + 0.08790490988459178 * 2.0;
-      flux_expected[4] =
-          0.5 * num_ptcls + 0.879049070406094 * 2.0 + 0.552268050859363 * 0.5;
+      flux_expected[3] =
+          0.1 * static_cast<double>(num_ptcls) + 0.08790490988459178 * 2.0;
+      flux_expected[4] = 0.5 * static_cast<double>(num_ptcls) +
+                         0.879049070406094 * 2.0 + 0.552268050859363 * 0.5;
 
       printf("The fluxes after 2nd move \nelem_id[found, expected] \n%d[%f,%f] "
              "\n%d[%f,%f] \n%d[%f,%f] \n%d[%f,%f] \n%d[%f,%f] \n%d[%f,%f]\n",
@@ -417,20 +419,21 @@ TEST_CASE("Test Boundary Handler Struct and Operator") {
                                                  argc, argv);
   fprintf(stdout, "[INFO] Particle structure created successfully\n");
 
-  std::vector<double> init_particle_positions(num_ptcls * 3);
-  for (int pid = 0; pid < num_ptcls; ++pid) {
+  std::vector<double> init_particle_positions(
+      static_cast<size_t>(num_ptcls * 3));
+  for (size_t pid = 0; pid < num_ptcls; ++pid) {
     init_particle_positions[pid * 3] = 0.1;
     init_particle_positions[pid * 3 + 1] = 0.4;
     init_particle_positions[pid * 3 + 2] = 0.5;
   }
 
   // this particle structure will be used to check the operator()
-  p_pumi_tallyimpl->initialize_particle_location(
-      init_particle_positions.data(), init_particle_positions.size());
+  p_pumi_tallyimpl->CopyInitialPositionToBuffer(init_particle_positions.data(),
+                                                init_particle_positions.size());
 
   {
     { // *Check if elem_ids_ are 2 now
-      auto elem_ids_l = p_pumi_tallyimpl->p_particle_tracer_->getElementIds();
+      auto elem_ids_l = p_pumi_tallyimpl->p_particle_tracer->getElementIds();
       Omega_h::HostRead<Omega_h::LO> elem_id_h(elem_ids_l);
       for (int pid = 0; pid < num_ptcls; ++pid) {
         printf("Element id of particle %d: %d expected %d\n", pid,
@@ -446,21 +449,21 @@ TEST_CASE("Test Boundary Handler Struct and Operator") {
     { // test prev_xpoint
       auto lastExit_l =
           p_pumi_tallyimpl->p_pumi_particle_at_elem_boundary_handler
-              ->prev_xpoint_;
+              ->prev_xpoint;
       Omega_h::HostWrite<Omega_h::Real> lastExit_host(lastExit_l);
       REQUIRE(lastExit_host.size() ==
               3 * p_pumi_tallyimpl->pumipic_ptcls->capacity());
       // prev_xpoints should be the current positions
     }
 
-    // initialize inter_points: should be the initial positions
+    // initialize inter_points: should be the is_initial_track positions
 
     // initialize ptcl_done
     Omega_h::Write<Omega_h::LO> ptcl_done(num_ptcls, 0, "particle done flag");
 
     { // * check how inter_points look like
       auto inter_points_l =
-          p_pumi_tallyimpl->p_particle_tracer_->getIntersectionPoints();
+          p_pumi_tallyimpl->p_particle_tracer->getIntersectionPoints();
       Omega_h::HostRead<Omega_h::Real> inter_points_host(inter_points_l);
       REQUIRE(inter_points_host.size() ==
               p_pumi_tallyimpl->pumipic_ptcls->capacity() * 3); // uninitialized

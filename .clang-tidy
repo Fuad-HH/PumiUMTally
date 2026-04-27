@@ -57,22 +57,19 @@ CheckOptions:
   - key: readability-identifier-naming.PrivateMemberSuffix
     value: '_'
 
-  # Google style: constants use kCamelCase
-  - key: readability-identifier-naming.ConstantCase
+  # Local const variables follow the same snake_case as other variables.
+  # Only constexpr and static constants use kCamelCase.
+  - key: readability-identifier-naming.ConstexprVariableCase
     value: CamelCase
-  - key: readability-identifier-naming.ConstantPrefix
-    value: k
-  - key: readability-identifier-naming.GlobalConstantCase
-    value: CamelCase
-  - key: readability-identifier-naming.GlobalConstantPrefix
+  - key: readability-identifier-naming.ConstexprVariablePrefix
     value: k
   - key: readability-identifier-naming.StaticConstantCase
     value: CamelCase
   - key: readability-identifier-naming.StaticConstantPrefix
     value: k
-  - key: readability-identifier-naming.ConstexprVariableCase
+  - key: readability-identifier-naming.GlobalConstantCase
     value: CamelCase
-  - key: readability-identifier-naming.ConstexprVariablePrefix
+  - key: readability-identifier-naming.GlobalConstantPrefix
     value: k
 
   # Google style: enum values use kCamelCase
