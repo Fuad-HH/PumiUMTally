@@ -1,4 +1,6 @@
 [![Test](https://github.com/Fuad-HH/PumiUMTally/actions/workflows/test.yml/badge.svg)](https://github.com/Fuad-HH/PumiUMTally/actions/workflows/test.yml)
+[![Static Analysis](https://github.com/Fuad-HH/PumiUMTally/actions/workflows/static-analysis.yml/badge.svg)](https://github.com/Fuad-HH/PumiUMTally/actions/workflows/static-analysis.yml)
+[![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 # PUMI-Tally
 
 **GPU-accelerated unstructured mesh tallies for Monte Carlo particle transport**
