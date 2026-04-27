@@ -18,7 +18,7 @@
 // *****************************************************************************************************//
 
 // TODO: Remove it by having another header file
-#include "pumipic_particle_data_structure.cpp"
+#include "pumipic_particle_data_structure.cpp" // NOLINT(bugprone-suspicious-include)
 
 bool is_close(const double a, const double b, double tol = 1e-8) {
   return std::abs(a - b) < tol;

@@ -19,7 +19,7 @@ jobs:
         uses: ./.github/actions/install-deps
         with:
           deps-dir: ${{ env.DEPS_DIR }}
-          extra-system-packages: clang-tidy-20
+          extra-system-packages: clang-tidy-20 libomp-dev
 
       - name: Configure pumi-tally
         run: |
