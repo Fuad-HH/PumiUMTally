@@ -23,12 +23,19 @@ jobs:
 
       - name: Configure pumi-tally
         run: |
+          # Some dependencies (e.g. Omega_h) needs MPI which is not
+          # automatically included in the compiler flags.
+          TIDY_CMD="clang-tidy-20"
+          for flag in $(mpicxx -show | tr ' ' '\n' | grep '^-I'); do
+            TIDY_CMD="${TIDY_CMD};--extra-arg=${flag}"
+          done
+
           cmake -S . -B build \
             -DCMAKE_PREFIX_PATH=$DEPS_DIR \
             -DCMAKE_CXX_COMPILER=mpicxx \
             -DCMAKE_C_COMPILER=mpicc \
             -DBUILD_SHARED_LIBS=ON \
-            -DCMAKE_CXX_CLANG_TIDY=clang-tidy-20
+            -DCMAKE_CXX_CLANG_TIDY=${TIDY_CMD}
 
       - name: Build with clang-tidy
         run: cmake --build build
