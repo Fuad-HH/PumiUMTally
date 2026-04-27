@@ -1,7 +1,4 @@
----
 InheritParentConfig: true
-
 Checks: >
-  -readability-identifier-naming
-
-WarningsAsErrors: ''
+  -readability-identifier-naming,
+  -bugprone-chained-comparison
