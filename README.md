@@ -1,3 +1,4 @@
+[![Test](https://github.com/Fuad-HH/PumiUMTally/actions/workflows/test.yml/badge.svg)](https://github.com/Fuad-HH/PumiUMTally/actions/workflows/test.yml)
 # PUMI-Tally
 
 **GPU-accelerated unstructured mesh tallies for Monte Carlo particle transport**
