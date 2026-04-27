@@ -37,7 +37,7 @@ runs:
       id: cache-deps
       with:
         path: ${{ inputs.deps-dir }}
-        key: deps-${{ runner.os }}-gcc12-mpich-kokkos4.7.00-omegah-scorec11.0.0-cabana0.6.1-pumipic
+        key: deps-${{ runner.os }}-gcc12-mpich-kokkos4.7.00-omegah-scorec11.0.0-cabana0.6.1-catch2-3.4.0-pumipic-make_search_class
 
     - name: Build Kokkos
       if: steps.cache-deps.outputs.cache-hit != 'true'
