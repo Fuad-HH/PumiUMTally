@@ -28,21 +28,7 @@ jobs:
             -DCMAKE_CXX_COMPILER=mpicxx \
             -DCMAKE_C_COMPILER=mpicc \
             -DBUILD_SHARED_LIBS=ON \
-            -DPUMITALLYOPENMC_ENABLE_TESTS=OFF \
-            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+            -DCMAKE_CXX_CLANG_TIDY=clang-tidy-20
 
-      - name: Run clang-tidy
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          mapfile -t files < <(find . -type f \( -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \) \
-            ! -path './.git/*' ! -path './build/*' ! -path './deps/*' ! -path './.*/*')
-
-          if [ "${#files[@]}" -eq 0 ]; then
-            echo "No C++ files found."
-            exit 0
-          fi
-
-          clang-tidy-20 --version
-          clang-tidy-20 -p build "${files[@]}"
+      - name: Build with clang-tidy
+        run: cmake --build build
