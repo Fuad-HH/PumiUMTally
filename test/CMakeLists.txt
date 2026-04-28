@@ -26,6 +26,7 @@ catch_discover_tests(test_hostwrite_initialization)
 
 add_executable(test_pumi_tally_impl_methods test_pumi_tally_impl_methods.cpp)
 target_include_directories(test_pumi_tally_impl_methods PRIVATE ${PROJECT_SOURCE_DIR}/src/pumitally)
-target_link_libraries(test_pumi_tally_impl_methods PUBLIC Catch2::Catch2WithMain pumipic::pumipic)
+# PumiPic needed for this since this test case uses Omega_h and PumiPic and pumitally keeps them private
+target_link_libraries(test_pumi_tally_impl_methods PUBLIC Catch2::Catch2WithMain pumipic::pumipic pumitally)
 catch_discover_tests(test_pumi_tally_impl_methods)
 #################### Test HostWrite ####################

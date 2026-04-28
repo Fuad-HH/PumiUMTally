@@ -5,7 +5,7 @@ include(GNUInstallDirs)
 
 ########################## OPTIONS ###############################
 option(BUILD_SHARED_LIBS                    "Build shared libraries"        ON)
-option(PUMITALLY_ENABLE_TESTS               "Enable tests"                  ON)
+option(PUMITALLY_ENABLE_TESTS               "Enable tests"                  OFF)
 option(PUMITALLY_USE_KOKKOS_CUDA            "Use CUDA"                      OFF)
 option(PUMITALLY_MEASURE_TIME               "Measure time"                  OFF)
 ###################################################################
@@ -22,10 +22,12 @@ endif()
 ####################### Headers and Sources #######################
 set(PUMITALLY_HEADERS
         src/pumitally/PumiTally.h
+        src/pumitally/PumiTallyImpl.h
 )
 
 set(PUMITALLY_SOURCES
         src/pumitally/PumiTally.cpp
+        src/pumitally/PumiTallyImpl.cpp
 )
 
 
