@@ -2,7 +2,7 @@
 // Created by Fuad Hasan on 12/3/24.
 //
 
-#include "pumipic_particle_data_structure.h"
+#include "PumiTally.h"
 #include <Omega_h_file.hpp>
 #include <Omega_h_mesh.hpp>
 #include <Omega_h_shape.hpp>

@@ -18,14 +18,14 @@
 // *****************************************************************************************************//
 
 // TODO: Remove it by having another header file
-#include "pumipic_particle_data_structure.cpp" // NOLINT(bugprone-suspicious-include)
+#include "PumiTally.cpp" // NOLINT(bugprone-suspicious-include)
 
-bool is_close(const double a, const double b, double tol = 1e-8) {
+bool is_close(const double a, const double b, const double tol = 1e-8) {
   return std::abs(a - b) < tol;
 }
 
 OMEGA_H_INLINE bool is_close_d(const double a, const double b,
-                               double tol = 1e-8) {
+                               const double tol = 1e-8) {
   return Kokkos::abs(a - b) < tol;
 }
 
