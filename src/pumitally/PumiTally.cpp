@@ -8,6 +8,8 @@
 #include "PumiTallyImpl.h"
 
 #include <chrono>
+#include <memory>
+#include <string>
 
 namespace pumitally {
 
@@ -22,7 +24,7 @@ PumiTally::PumiTally(const std::string &mesh_filename,
                                              argv)) {}
 
 void PumiTally::CopyInitialPosition(double *init_particle_positions,
-                                    const Omega_h::LO size) const {
+                                    const std::int32_t size) const {
   const auto start_time = std::chrono::steady_clock::now();
 
   pimpl_->CopyInitialPositionToBuffer(init_particle_positions, size);
