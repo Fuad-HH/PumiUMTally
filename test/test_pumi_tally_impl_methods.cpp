@@ -12,20 +12,18 @@
 // - Sections are not working for some reason. Saying using MPI functions before
 // or after MPI init or finalize
 // - sections are marked with comments for now
-// - TODO Remove including cpp by creating another internal header
 // - Look at this gist to verify this in python:
 // https://gist.github.com/Fuad-HH/5e0aed99f271617e283e9108091fb1cb
 // *****************************************************************************************************//
 
-// TODO: Remove it by having another header file
-#include "pumipic_particle_data_structure.cpp" // NOLINT(bugprone-suspicious-include)
+#include <PumiTallyImpl.h>
 
-bool is_close(const double a, const double b, double tol = 1e-8) {
+bool is_close(const double a, const double b, const double tol = 1e-8) {
   return std::abs(a - b) < tol;
 }
 
 OMEGA_H_INLINE bool is_close_d(const double a, const double b,
-                               double tol = 1e-8) {
+                               const double tol = 1e-8) {
   return Kokkos::abs(a - b) < tol;
 }
 

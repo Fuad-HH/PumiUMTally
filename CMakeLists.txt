@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.20)
-project(pumitallyopenmc)
+project(pumitally)
 include(FetchContent)
 include(GNUInstallDirs)
 
 ########################## OPTIONS ###############################
 option(BUILD_SHARED_LIBS                    "Build shared libraries"        ON)
-option(PUMITALLYOPENMC_ENABLE_TESTS         "Enable tests"                  ON)
-option(PUMI_USE_KOKKOS_CUDA                 "Use CUDA"                      OFF)
-option(PUMI_MEASURE_TIME                    "Measure time"                  OFF)
+option(PUMITALLY_ENABLE_TESTS               "Enable tests"                  OFF)
+option(PUMITALLY_USE_KOKKOS_CUDA            "Use CUDA"                      OFF)
+option(PUMITALLY_MEASURE_TIME               "Measure time"                  OFF)
 ###################################################################
 
 ################################## PUMIPIC ########################
@@ -20,17 +20,19 @@ endif()
 ###################################################################
 
 ####################### Headers and Sources #######################
-set(PUMITALLYOPENMC_HEADERS
-        src/pumitallyopenmc/pumipic_particle_data_structure.h
+set(PUMITALLY_HEADERS
+        src/pumitally/PumiTally.h
+        src/pumitally/PumiTallyImpl.h
 )
 
-set(PUMITALLYOPENMC_SOURCES
-        src/pumitallyopenmc/pumipic_particle_data_structure.cpp
+set(PUMITALLY_SOURCES
+        src/pumitally/PumiTally.cpp
+        src/pumitally/PumiTallyImpl.cpp
 )
 
 
 ################################## Testing ########################
-if(PUMITALLYOPENMC_ENABLE_TESTS)
+if(PUMITALLY_ENABLE_TESTS)
     message(STATUS "TESTS ENABLED")
     include(CTest)
     enable_testing()
@@ -51,25 +53,25 @@ set(CMAKE_BUILD_RPATH "${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}")
 
 
 ################################## Create Library #################
-add_library(pumitallyopenmc)
-target_sources(pumitallyopenmc PRIVATE ${PUMITALLYOPENMC_SOURCES})
-target_link_libraries(pumitallyopenmc PRIVATE pumipic::pumipic)
-if(PUMI_USE_KOKKOS_CUDA)
-    target_compile_definitions(pumitallyopenmc PRIVATE -DPUMI_USE_KOKKOS_CUDA)
+add_library(pumitally)
+target_sources(pumitally PRIVATE ${PUMITALLY_SOURCES})
+target_link_libraries(pumitally PRIVATE pumipic::pumipic)
+if(PUMITALLY_USE_KOKKOS_CUDA)
+    target_compile_definitions(pumitally PRIVATE -DPUMITALLY_USE_KOKKOS_CUDA)
     if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-      target_compile_options(pumitallyopenmc PRIVATE -G)
+      target_compile_options(pumitally PRIVATE -G)
     endif()
 endif()
-set_target_properties(pumitallyopenmc PROPERTIES
-    PUBLIC_HEADER "${PUMITALLYOPENMC_HEADERS}")
+set_target_properties(pumitally PROPERTIES
+    PUBLIC_HEADER "${PUMITALLY_HEADERS}")
 
-if(PUMI_MEASURE_TIME)
+if(PUMITALLY_MEASURE_TIME)
     string(TOUPPER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_UPPER)
     if(CMAKE_BUILD_TYPE_UPPER STREQUAL "DEBUG")
         message(WARNING "Time measurement won't work properly in Debug mode")
     endif()
 
-    target_compile_definitions(pumitallyopenmc PRIVATE -DPUMI_MEASURE_TIME)
+    target_compile_definitions(pumitally PRIVATE -DPUMITALLY_MEASURE_TIME)
 endif()
 ###################################################################
 
@@ -78,7 +80,7 @@ endif()
 
 ################################ Install ##########################
 
-target_include_directories(pumitallyopenmc
+target_include_directories(pumitally
     PRIVATE
       ${CMAKE_CURRENT_SOURCE_DIR}/src
 
@@ -108,31 +110,31 @@ else()
     )
 endif()
 
-install(TARGETS pumitallyopenmc
-  EXPORT pumitallyopenmcTargets 
+install(TARGETS pumitally
+  EXPORT pumitallyTargets
   LIBRARY DESTINATION   ${CMAKE_INSTALL_LIBDIR}
   ARCHIVE DESTINATION   ${CMAKE_INSTALL_LIBDIR}
   RUNTIME DESTINATION   ${CMAKE_INSTALL_BINDIR}
   INCLUDES DESTINATION  ${CMAKE_INSTALL_INCLUDEDIR}
-        PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/pumitallyopenmc
+        PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/pumitally
 )
 
-install(EXPORT pumitallyopenmcTargets
-  FILE pumitallyopenmcTargets.cmake
-  NAMESPACE pumitallyopenmc::
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/pumitallyopenmc
+install(EXPORT pumitallyTargets
+  FILE pumitallyTargets.cmake
+  NAMESPACE pumitally::
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/pumitally
 )
 
 include(CMakePackageConfigHelpers)
 configure_package_config_file(
-  ${CMAKE_CURRENT_SOURCE_DIR}/cmake/pumitallyopenmcConfig.cmake.in
-  ${CMAKE_CURRENT_BINARY_DIR}/pumitallyopenmcConfig.cmake
-  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/pumitallyopenmc
+  ${CMAKE_CURRENT_SOURCE_DIR}/cmake/pumitallyConfig.cmake.in
+  ${CMAKE_CURRENT_BINARY_DIR}/pumitallyConfig.cmake
+  INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/pumitally
 )
 
 install(FILES
-  ${CMAKE_CURRENT_BINARY_DIR}/pumitallyopenmcConfig.cmake
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/pumitallyopenmc
+  ${CMAKE_CURRENT_BINARY_DIR}/pumitallyConfig.cmake
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/pumitally
 )
 
 ###################################################################

@@ -1,10 +1,9 @@
 /**
- * @file pumipic_particle_data_structure.h
  * @brief User Interface for PUMI-Tally
  */
 
-#ifndef PUMITALLYOPENMC_PUMIPIC_PARTICLE_DATA_STRUCTURE_H
-#define PUMITALLYOPENMC_PUMIPIC_PARTICLE_DATA_STRUCTURE_H
+#ifndef PUMITALLY_PUMITALLY_H
+#define PUMITALLY_PUMITALLY_H
 
 #include <cstdint>
 #include <memory>
@@ -108,4 +107,4 @@ private:
 };
 } // namespace pumitally
 
-#endif // PUMITALLYOPENMC_PUMIPIC_PARTICLE_DATA_STRUCTURE_H
+#endif // PUMITALLY_PUMITALLY_H
