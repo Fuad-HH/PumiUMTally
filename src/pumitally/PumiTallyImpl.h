@@ -26,6 +26,12 @@ struct TallyTimes {
   void PrintTimes() const;
 };
 
+enum class SourceDistribution {
+  UNIFORM, // Source uniformly distributed across the mesh
+  EQUAL,    // Source at centroids of each element
+  ZERO     // in the zeroth element centroid
+};
+
 /**
  * @brief PUMI-PiC Data structure Template
  * @details
@@ -35,10 +41,11 @@ struct TallyTimes {
  * @n   2-ID,
  * @n   3-in_advance_particle_queue,
  * @n   4-weight
+ * @n   5-group
  */
 using PPParticle =
     pumipic::MemberTypes<pumipic::Vector3d, pumipic::Vector3d, Omega_h::LO,
-                         Omega_h::I16, Omega_h::Real>;
+                         Omega_h::I16, Omega_h::Real, Omega_h::I16>;
 using PPPS = pumipic::ParticleStructure<PPParticle>; //!< PUMI-PiC Particle DS
 using PPExeSpace =
     Kokkos::DefaultExecutionSpace; //!< PUMI-PiC Default Execution Space
@@ -142,6 +149,11 @@ struct ParticleAtElemBoundary {
   bool is_initial_track; //!< in is_initial_track run, flux is not tallied
   Omega_h::Write<Omega_h::Real> flux;        //!< Flux tally array
   Omega_h::Write<Omega_h::Real> prev_xpoint; //!< Previous intersection point
+
+  // temporary gabe merging variables
+  // these will be removed after the operator functinality is merged to both
+  Omega_h::Write<Omega_h::LO> last_exit_;
+  Omega_h::Write<Omega_h::Real> alpha_;
 };
 
 /**
@@ -186,7 +198,7 @@ struct PumiTallyImpl {
   TallyTimes tally_times; //!< Struct to hold times for different operations
 
   PumiTallyImpl(const std::string &mesh_filename, Omega_h::LO num_ptcls,
-                int argc, char **argv);
+                int argc, char **argv, SourceDistribution source_dist = SourceDistribution::ZERO);
 
   ~PumiTallyImpl() = default;
 
