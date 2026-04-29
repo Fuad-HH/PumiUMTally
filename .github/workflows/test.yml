@@ -26,9 +26,10 @@ jobs:
             -DCMAKE_PREFIX_PATH=$DEPS_DIR \
             -DCMAKE_CXX_COMPILER=mpicxx \
             -DCMAKE_C_COMPILER=mpicc \
-            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_BUILD_TYPE=Debug \
             -DBUILD_SHARED_LIBS=ON \
-            -DPUMITALLYOPENMC_ENABLE_TESTS=ON
+            -DPUMITALLY_ENABLE_DEGAS2=ON \
+            -DPUMITALLY_ENABLE_TESTS=ON
 
       - name: Build
         run: cmake --build build -j$(nproc)
