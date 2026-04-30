@@ -6,6 +6,7 @@ on:
 
 env:
   DEPS_DIR: ${{ github.workspace }}/deps
+  LD_LIBRARY_PATH: ${{ github.workspace }}/deps/lib
 
 jobs:
   ctest:
