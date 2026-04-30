@@ -14,20 +14,19 @@
 #include "PumiTallyImpl.h"
 
 struct InputParameters {
+  InputParameters(int argc, char *argv[]);
   std::string mesh_name;
   int num_particles = 0;
   int max_iterations = 1000;
   pumitally::SourceDistribution source_distribution =
       pumitally::SourceDistribution::EQUAL;
 };
-void read_input_parameters(int argc, char *const *argv,
-                           InputParameters &params);
-void print_initial_info(const std::string &mesh_name,
-                        int num_particles) noexcept;
 
-void sample_initial_particle_energy_direction(
-    Kokkos::View<double *> energy_array, Kokkos::View<double *> direction,
-    Kokkos::View<double *> alpha);
+void PrintInitialInfo(const std::string &mesh_name, int num_particles) noexcept;
+
+void SampleInitialParticleState(const Kokkos::View<double *> &energy_array,
+                                const Kokkos::View<double *> &direction,
+                                const Kokkos::View<double *> &alpha);
 
 template <typename T>
 void vector2write(const std::vector<T> &vec, Omega_h::Write<T> &write_vec) {
@@ -38,6 +37,8 @@ void vector2write(const std::vector<T> &vec, Omega_h::Write<T> &write_vec) {
   write_vec = Omega_h::Write<T>(host_write_vec);
 }
 
+// todo: make it a set of reads, not writes
+// make the read field values and set fields to mesh members
 struct Fields {
   std::vector<double> electron_temperature;
   std::vector<double> ion_temperature;
@@ -45,19 +46,19 @@ struct Fields {
   std::vector<double> ion_density;
   std::vector<double> bulk_flow_velocity;
 };
-void get_field_values(Omega_h::Reals centroids, Fields &fields);
+void get_field_values(const Omega_h::Reals &centroids, Fields &fields);
 void set_field_values_to_mesh(Omega_h::Mesh &mesh, const Fields &fields);
 // void set_source_particles(Omega_h::Mesh &mesh,
 //                         SourceDistribution source_distribution,
 //                           Omega_h::Write<Omega_h::Real> particle_positions);
-void transport(pumitally::PumiTallyImpl &pumi_tally, DG2Physics &physics,
+void Transport(pumitally::PumiTallyImpl &pumi_tally, DG2Physics &physics,
                const Omega_h::Read<Omega_h::Real> &electron_density,
-               const Omega_h::Read<Omega_h::Real> ion_density,
-               const Omega_h::Read<Omega_h::Real> electron_temperature,
-               const Omega_h::Read<Omega_h::Real> ion_temperature,
-               const Omega_h::Read<Omega_h::Real> bulk_flow_velocity,
-               const Kokkos::View<double *> initial_direction,
-               const Kokkos::View<double *> initial_alpha, int max_iterations);
+               const Omega_h::Read<Omega_h::Real> &ion_density,
+               const Omega_h::Read<Omega_h::Real> &electron_temperature,
+               const Omega_h::Read<Omega_h::Real> &ion_temperature,
+               const Omega_h::Read<Omega_h::Real> &bulk_flow_velocity,
+               const Kokkos::View<double *> &initial_direction,
+               const Kokkos::View<double *> &initial_alpha, int max_iterations);
 
 // ***************************************************************************//
 // *************************** Main Function ******************************** //
@@ -66,9 +67,8 @@ int main(int argc, char *argv[]) {
   Kokkos::initialize(argc, argv);
   {
     // Read input parameters
-    InputParameters input_params;
-    read_input_parameters(argc, argv, input_params);
-    print_initial_info(input_params.mesh_name, input_params.num_particles);
+    InputParameters input_params(argc, argv);
+    PrintInitialInfo(input_params.mesh_name, input_params.num_particles);
 
     // Initialize PUMI-Tally and Read Fields
     auto pumi_tally = pumitally::PumiTallyImpl(
@@ -81,20 +81,19 @@ int main(int argc, char *argv[]) {
     set_field_values_to_mesh(mesh, fields);
     pumi_tally.is_pumipic_initialized = true;
 
-    Kokkos::View<Omega_h::Real ***> sigma_t_;            // mat, T, g
-    Kokkos::View<Omega_h::Real ***> sigma_a_;            // mat, T, g
-    Kokkos::View<Omega_h::Real ****> scattering_matrix_; // mat, T, g, g
-    Kokkos::View<Omega_h::Real ***> sigma_s_;            // mat, T, g
-    DG2CrossSection crossSection(sigma_t_, sigma_a_, scattering_matrix_,
-                                 sigma_s_);
-    DG2Physics physics(crossSection, input_params.num_particles);
+    Kokkos::View<Omega_h::Real ***> sigma_t;            // mat, T, g
+    Kokkos::View<Omega_h::Real ***> sigma_a;            // mat, T, g
+    Kokkos::View<Omega_h::Real ****> scattering_matrix; // mat, T, g, g
+    Kokkos::View<Omega_h::Real ***> sigma_s;            // mat, T, g
+    DG2CrossSection cross_section(sigma_t, sigma_a, scattering_matrix, sigma_s);
+    DG2Physics physics(cross_section, input_params.num_particles);
 
     Kokkos::View<double *> initial_direction("Initial Direction",
                                              input_params.num_particles * 3);
     Kokkos::View<double *> initial_alpha("Initial Alpha",
                                          input_params.num_particles);
-    sample_initial_particle_energy_direction(physics.particle_energy,
-                                             initial_direction, initial_alpha);
+    SampleInitialParticleState(physics.particle_energy, initial_direction,
+                               initial_alpha);
 
     // Move particles
     auto electron_density =
@@ -108,7 +107,7 @@ int main(int argc, char *argv[]) {
     auto bulk_flow_velocity =
         mesh.get_array<Omega_h::Real>(Omega_h::REGION, "bulk_flow_velocity");
 
-    transport(pumi_tally, physics, electron_density, ion_density,
+    Transport(pumi_tally, physics, electron_density, ion_density,
               electron_temperature, ion_temperature, bulk_flow_velocity,
               initial_direction, initial_alpha, input_params.max_iterations);
 
@@ -127,14 +126,15 @@ int main(int argc, char *argv[]) {
 // ****************************************************************************************************************
 // //
 
-void transport(pumitally::PumiTallyImpl &pumi_tally, DG2Physics &physics,
+void Transport(pumitally::PumiTallyImpl &pumi_tally, DG2Physics &physics,
                const Omega_h::Read<Omega_h::Real> &electron_density,
-               const Omega_h::Read<Omega_h::Real> ion_density,
-               const Omega_h::Read<Omega_h::Real> electron_temperature,
-               const Omega_h::Read<Omega_h::Real> ion_temperature,
-               const Omega_h::Read<Omega_h::Real> bulk_flow_velocity,
-               const Kokkos::View<double *> initial_direction,
-               const Kokkos::View<double *> initial_alpha, int max_iterations) {
+               const Omega_h::Read<Omega_h::Real> &ion_density,
+               const Omega_h::Read<Omega_h::Real> &electron_temperature,
+               const Omega_h::Read<Omega_h::Real> &ion_temperature,
+               const Omega_h::Read<Omega_h::Real> &bulk_flow_velocity,
+               const Kokkos::View<double *> &initial_direction,
+               const Kokkos::View<double *> &initial_alpha,
+               int max_iterations) {
 
   for (int iter = 0; iter < max_iterations; ++iter) {
     auto particle_dest = pumi_tally.pumipic_ptcls->get<1>();
@@ -327,7 +327,7 @@ void set_field_values_to_mesh(Omega_h::Mesh &mesh, const Fields &fields) {
 // NOTE: This requires the python script and the plasma source mesh and data
 // to be in the folder with this cpp file. The python script may need to be
 // updated to read in different plasma source data.
-void get_field_values(Omega_h::Reals centroids, Fields &fields) {
+void get_field_values(const Omega_h::Reals &centroids, Fields &fields) {
   auto centroids_h = Omega_h::HostRead<Omega_h::Real>(centroids);
 
   // This function should be implemented to retrieve the field values
@@ -342,44 +342,43 @@ void get_field_values(Omega_h::Reals centroids, Fields &fields) {
   fields.bulk_flow_velocity.resize(3 * num_elements, 0.0);
 
   // TODO: Add your code here to retrieve the actual field values
-  // Write centroid coords to CSV to be read by python script
+  // Write centroid coords to CSV to be read by Python script
   std::ofstream coords("centroid_coords.csv");
   for (int j = 0; j < (centroids_h.size() / 3); j++) {
     coords << j << "," << centroids_h[j * 3 + 0] << ","
-           << centroids_h[j * 3 + 1] << "," << centroids_h[j * 3 + 2]
-           << std::endl;
+           << centroids_h[j * 3 + 1] << "," << centroids_h[j * 3 + 2] << '\n';
   }
   coords.close();
 
-  // Run the python script
+  // Run the Python script
   // system("python Mesh_Map.py");
 
   // Read in the field values
   std::ifstream fieldvals{"vals.csv"};
   int i = 0;
-  std::string IDString;
-  std::string xxString;
-  std::string yyString;
-  std::string zzString;
+  std::string id_string;
+  std::string xx_string;
+  std::string yy_string;
+  std::string zz_string;
 
-  while (std::getline(fieldvals, IDString, ',')) {
+  while (std::getline(fieldvals, id_string, ',')) {
 
-    std::getline(fieldvals, xxString, ',');
-    std::getline(fieldvals, yyString, ',');
-    std::getline(fieldvals, zzString, '\n');
+    std::getline(fieldvals, xx_string, ',');
+    std::getline(fieldvals, yy_string, ',');
+    std::getline(fieldvals, zz_string, '\n');
 
     // Asign field values
-    fields.ion_density[i] = std::stod(xxString);
-    fields.electron_density[i] = std::stod(xxString);
-    fields.electron_temperature[i] = std::stod(yyString);
-    fields.ion_temperature[i] = std::stod(zzString);
+    fields.ion_density[i] = std::stod(xx_string);
+    fields.electron_density[i] = std::stod(xx_string);
+    fields.electron_temperature[i] = std::stod(yy_string);
+    fields.ion_temperature[i] = std::stod(zz_string);
 
     i++;
   }
 }
 
-void print_initial_info(const std::string &mesh_name,
-                        int num_particles) noexcept {
+void PrintInitialInfo(const std::string &mesh_name,
+                      int num_particles) noexcept {
   printf("\n===================> Accelerated Degas2 <======================\n");
   std::string mesh_particle_info =
       "\tMesh: " + mesh_name +
@@ -388,50 +387,53 @@ void print_initial_info(const std::string &mesh_name,
   printf("\n===============================================================\n");
 }
 
-void read_input_parameters(int argc, char *const *argv,
-                           InputParameters &params) {
+InputParameters::InputParameters(const int argc, char *argv[]) {
   if (argc != 5) {
     throw std::runtime_error(
         "Usage: " + std::string(argv[0]) +
         " <mesh_name> <num_particles> <max iter> <source_distribution>");
   }
-  params.mesh_name = argv[1];
-  params.num_particles = std::stoi(argv[2]);
-  if (params.num_particles <= 0) {
+  mesh_name = argv[1];
+  num_particles = std::stoi(argv[2]);
+  if (num_particles <= 0) {
     throw std::runtime_error("Number of particles must be a positive integer.");
   }
-  params.max_iterations = std::stoi(argv[3]);
+  max_iterations = std::stoi(argv[3]);
 
   std::string source_dist_str = argv[4];
   // FIXME: hardcoded lower case
   if (source_dist_str == "uniform") {
-    params.source_distribution = pumitally::SourceDistribution::UNIFORM;
+    source_distribution = pumitally::SourceDistribution::UNIFORM;
   } else if (source_dist_str == "equal") {
-    params.source_distribution = pumitally::SourceDistribution::EQUAL;
+    source_distribution = pumitally::SourceDistribution::EQUAL;
   } else {
     throw std::runtime_error(
         "Invalid source distribution. Use 'uniform' or 'equal'.");
   }
 }
 
-void sample_initial_particle_energy_direction(
-    Kokkos::View<double *> energy_array, Kokkos::View<double *> direction,
-    Kokkos::View<double *> alpha) {
-  random_pool_t randomPool(0);
-  auto sample_energy = OMEGA_H_LAMBDA(int i) {
+// todo: split this function to sample uniform direction and sample energy
+// and move to impl class
+void SampleInitialParticleState(const Kokkos::View<double *> &energy_array,
+                                Kokkos::View<double *> &direction,
+                                const Kokkos::View<double *> &alpha) {
+  const random_pool_t random_pool(SEED);
+
+  auto sample_energy = OMEGA_H_LAMBDA(const int i) {
     // Basically, feed this 4 uniformly generated random numbers, x1, x2, y1,
     // y2, on the interval (0,1) and it
     // will give you a velocity vector (vx,vy,vz), a unit direction vector
     // (directionx, directiony, directionz), the alpha value used in the tally,
     // and the energy of the particle that was sampled. All from a gas at
     // temperature temp.
-    double mp{938.27e6 / (3e10 * 3e10)}; // eV/c^2 = eV*s^2/cm^2. Necessary
+    constexpr double kMp{938.27e6 /
+                         (3e10 * 3e10)}; // eV/c^2 = eV*s^2/cm^2. Necessary
                                          // constant for the distribution
 
     // This is what we set as the source temperature. This could in principle be
     // a parameter but for now can be hard coded in as 3 eV or so and I can
     // always tweak it.
-    double temp = 3; // eV.
+    constexpr double kSourceTemp = 3; // eV.
 
     // This uses the Box-Muller method of sampling a Gaussian, which generates
     // two independent normally distributed values from two independent
@@ -440,21 +442,24 @@ void sample_initial_particle_energy_direction(
     // 4 independent normally distributed values, but we only need three. This
     // generates a velocity vector (vx,vy,vz) sampled from an ideal gas at
     // temperature temp.
-    auto generator = randomPool.get_state();
-    auto x1 = generator.drand(0.0, 1.0);
-    auto x2 = generator.drand(0.0, 1.0);
-    auto y1 = generator.drand(0.0, 1.0);
-    auto y2 = generator.drand(0.0, 1.0);
-    randomPool.free_state(generator);
-    auto vx = Kokkos::sqrt(temp / mp) * Kokkos::sqrt(-2 * Kokkos::log(x1)) *
-              Kokkos::cos(2 * M_PI * x2);
-    auto vy = Kokkos::sqrt(temp / mp) * Kokkos::sqrt(-2 * Kokkos::log(x1)) *
-              Kokkos::sin(2 * M_PI * x2);
-    auto vz = Kokkos::sqrt(temp / mp) * Kokkos::sqrt(-2 * Kokkos::log(y1)) *
-              Kokkos::sin(2 * M_PI * y2);
+    auto generator = random_pool.get_state();
+    const double x1 = generator.drand(0.0, 1.0);
+    const double x2 = generator.drand(0.0, 1.0);
+    const double y1 = generator.drand(0.0, 1.0);
+    const double y2 = generator.drand(0.0, 1.0);
+    random_pool.free_state(generator);
+    const double vx = Kokkos::sqrt(kSourceTemp / kMp) *
+                      Kokkos::sqrt(-2 * Kokkos::log(x1)) *
+                      Kokkos::cos(2 * M_PI * x2);
+    const double vy = Kokkos::sqrt(kSourceTemp / kMp) *
+                      Kokkos::sqrt(-2 * Kokkos::log(x1)) *
+                      Kokkos::sin(2 * M_PI * x2);
+    const double vz = Kokkos::sqrt(kSourceTemp / kMp) *
+                      Kokkos::sqrt(-2 * Kokkos::log(y1)) *
+                      Kokkos::sin(2 * M_PI * y2);
 
     // Compute the magnitude of the velocity vector
-    auto mag_v = Kokkos::sqrt(vx * vx + vy * vy + vz * vz);
+    const double mag_v = Kokkos::sqrt(vx * vx + vy * vy + vz * vz);
 
     // Compute the alpha factor multiplied in when computing the tally
     alpha(i) = 1 / mag_v;
@@ -467,9 +472,9 @@ void sample_initial_particle_energy_direction(
     // Compute the particle energy. This you will want to save probably to pass
     // to my initialization (set_energy) code so that I have the energy for my
     // computations.
-    double particle_energy = 0.5 * mp * mag_v * mag_v;
+    const double particle_energy = 0.5 * kMp * mag_v * mag_v;
     energy_array(i) = particle_energy;
   };
-  Kokkos::parallel_for("sample_initial_particle_energy_direction",
-                       energy_array.size(), sample_energy);
+  Kokkos::parallel_for("SampleInitialParticleState", energy_array.size(),
+                       sample_energy);
 }
