@@ -1,7 +1,10 @@
 name: Static Analysis
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Test"]
+    types:
+      - completed
   workflow_dispatch:
 
 env:
@@ -10,9 +13,15 @@ env:
 jobs:
   clang-tidy:
     runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
 
       - name: Install dependencies
         uses: ./.github/actions/install-deps
