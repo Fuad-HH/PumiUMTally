@@ -8,6 +8,7 @@
 #include "DG2Physics.h"
 #include <Kokkos_Core.hpp>
 #include <fstream>
+#include <iomanip>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 TEST_CASE("Test Degas2 Physics Functions") {
@@ -98,20 +99,40 @@ TEST_CASE("Test Degas2 Physics Functions") {
 	outfile << "Standard Deviation of Mean x Direction: " << sdux << std::endl; //0.579
 
 
-	outfile << "Particle #,Velocity(m/s),Weight,X(cm),Y(cm),Z(cm),X_Dir,Y_Dir,Z_Dir" << std::endl;
+        outfile << std::left
+        << std::setw(10) << "Particle #"
+        << std::setw(16) << "Velocity(m/s)"
+        << std::setw(10) << "Weight"
+        << std::setw(10) << "X(cm)"
+        << std::setw(10) << "Y(cm)"
+        << std::setw(10) << "Z(cm)"
+        << std::setw(10) << "X_Dir"
+        << std::setw(10) << "Y_Dir"
+        << std::setw(10) << "Z_Dir"
+        << '\n';
 
-	for (int i = 0; i < numParticles; ++i) {
-		outfile << i << ",";
-		outfile << (1.0/output(i).alpha) << ",";
-		outfile << output(i).weight << ",";
-		outfile << output(i).position[0] << ",";
-		outfile << output(i).position[1] << ",";
-		outfile << output(i).position[2] << ",";
-		outfile << output(i).direction[0] << ",";
-		outfile << output(i).direction[1] << ",";
-		outfile << output(i).direction[2] << std::endl;
-	}
-	
+        for (int i = 0; i < numParticles; ++i) {
+          outfile << std::left
+                  << std::setw(10) << i
+                  << std::setw(16) << (1.0 / output(i).alpha)
+                  << std::setw(10) << output(i).weight
+                  << std::setw(10) << output(i).position[0]
+                  << std::setw(10) << output(i).position[1]
+                  << std::setw(10) << output(i).position[2]
+                  << std::setw(10) << output(i).direction[0]
+                  << std::setw(10) << output(i).direction[1]
+                  << std::setw(10) << output(i).direction[2]
+                  << '\n';
+        }
+
+        // print the file
+        std::ifstream infile("Log.txt");
+        std::string line;
+        while (std::getline(infile, line)) {
+          std::cout << line << '\n';
+        }
+        outfile.close();
+
   	REQUIRE_THAT(l, Catch::Matchers::WithinAbs(0.0240,0.0004));
   	REQUIRE_THAT(sdl, Catch::Matchers::WithinAbs(0.0240,0.0004));
   	REQUIRE_THAT(ux, Catch::Matchers::WithinAbs(0.0,.03));
