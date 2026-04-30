@@ -88,7 +88,7 @@ TEST_CASE("Test Degas2 Physics Functions") {
 	ux /= numParticles;
 	outfile << "Mean x Direction: " << ux << std::endl; //0.0159
 
-	double varux;
+	double varux {0.0};
 	for (int i=0; i < numParticles; ++i) {
 		varux += (output(i).direction[0] - ux)*(output(i).direction[0] - ux);
 	}
@@ -133,8 +133,13 @@ TEST_CASE("Test Degas2 Physics Functions") {
         }
         outfile.close();
 
-  	REQUIRE_THAT(l, Catch::Matchers::WithinAbs(0.0240,0.0004));
-  	REQUIRE_THAT(sdl, Catch::Matchers::WithinAbs(0.0240,0.0004));
+	// Fixme: Where did this tolerance come from. Looks like it's
+	// not enough for 1000 particles.
+	// Tolerance is 0.0015 for l, with 95% confidence interval for mean
+	// with 1000 samples. But we should use something like 2-3 standard deviations
+	// with more than 99% confidence.
+  	REQUIRE_THAT(l, Catch::Matchers::WithinAbs(0.0240,0.0015));
+    REQUIRE_THAT(sdl, Catch::Matchers::WithinAbs(0.0240,0.0015));
   	REQUIRE_THAT(ux, Catch::Matchers::WithinAbs(0.0,.03));
   	REQUIRE_THAT(sdux, Catch::Matchers::WithinAbs(0.577,.03));
   }
