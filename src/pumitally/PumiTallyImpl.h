@@ -12,6 +12,8 @@
 
 namespace pumitally {
 
+Omega_h::Reals GetCentroids(Omega_h::Mesh &mesh, bool add_tag = true);
+
 /**
  *  Data structure to hold the timing information for different sections
  */

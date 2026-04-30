@@ -24,9 +24,7 @@ void read_input_parameters(int argc, char *const *argv,
                            InputParameters &params);
 void print_initial_info(const std::string &mesh_name,
                         int num_particles) noexcept;
-// computes centroids of each element in the mesh and stores them in a tag
-void get_centroids(Omega_h::Mesh &mesh,
-                   Omega_h::Write<Omega_h::Real> centroids);
+
 void sample_initial_particle_energy_direction(
     Kokkos::View<double *> energy_array, Kokkos::View<double *> direction,
     Kokkos::View<double *> alpha);
@@ -77,8 +75,7 @@ int main(int argc, char *argv[]) {
         input_params.mesh_name, input_params.num_particles, argc, argv,
         input_params.source_distribution);
     auto &mesh = pumi_tally.full_mesh;
-    Omega_h::Write<Omega_h::Real> centroids(mesh.nelems() * 3);
-    get_centroids(mesh, centroids);
+    const auto centroids = pumitally::GetCentroids(mesh);
     Fields fields;
     get_field_values(Omega_h::Reals(centroids), fields);
     set_field_values_to_mesh(mesh, fields);
@@ -324,32 +321,6 @@ void set_field_values_to_mesh(Omega_h::Mesh &mesh, const Fields &fields) {
   mesh.add_tag<Omega_h::Real>(Omega_h::REGION, "ion_density", 1, ion_density);
   mesh.add_tag<Omega_h::Real>(Omega_h::REGION, "bulk_flow_velocity", 3,
                               bulk_flow_velocity);
-}
-
-void get_centroids(Omega_h::Mesh &mesh,
-                   Omega_h::Write<Omega_h::Real> centroids) {
-  OMEGA_H_CHECK_PRINTF(
-      centroids.size() == mesh.nelems() * 3,
-      "Centroids size (%d) must be equal to number of elements * 3 (%d)\n",
-      centroids.size(), mesh.nelems() * 3);
-  const auto coords = mesh.coords();
-  const auto nelems = mesh.nelems();
-  const auto e2v = mesh.ask_down(Omega_h::REGION, Omega_h::VERT).ab2b;
-
-  // FIXME: Hardcoded for 3D tets
-  Omega_h::parallel_for(
-      "calculate centroids", nelems, OMEGA_H_LAMBDA(int e) {
-        auto nodes = o::gather_verts<4>(e2v, e);
-        o::Few<o::Vector<3>, 4> elem_coords =
-            o::gather_vectors<4, 3>(coords, nodes);
-        o::Vector<3> centroid = o::average(elem_coords);
-
-        centroids[e * 3 + 0] = centroid[0];
-        centroids[e * 3 + 1] = centroid[1];
-        centroids[e * 3 + 2] = centroid[2];
-      });
-
-  mesh.add_tag<Omega_h::Real>(Omega_h::REGION, "centroid", 3, centroids);
 }
 
 // TODO: Implement the function to retrieve field values based on centroids

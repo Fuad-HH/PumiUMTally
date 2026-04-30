@@ -19,6 +19,33 @@ std::unique_ptr<PPPS> CreateParticleDS(const Omega_h::Mesh &mesh,
 
 void InitializeParticlesInElement0(Omega_h::Mesh &mesh, pumitally::PPPS *ptcls);
 
+Omega_h::Reals GetCentroids(Omega_h::Mesh &mesh, const bool add_tag) {
+  const auto coords = mesh.coords();
+  const auto nelems = mesh.nelems();
+  const auto e2v = mesh.ask_down(Omega_h::REGION, Omega_h::VERT).ab2b;
+
+  const Omega_h::Write<Omega_h::Real> centroids(nelems * 3, 0.0, "centroids");
+
+  // FIXME: Hardcoded for 3D tets
+  Omega_h::parallel_for(
+      "calculate centroids", nelems, OMEGA_H_LAMBDA(int e) {
+        const auto nodes = o::gather_verts<4>(e2v, e);
+        o::Few<o::Vector<3>, 4> elem_coords =
+            o::gather_vectors<4, 3>(coords, nodes);
+        o::Vector<3> centroid = o::average(elem_coords);
+
+        centroids[e * 3 + 0] = centroid[0];
+        centroids[e * 3 + 1] = centroid[1];
+        centroids[e * 3 + 2] = centroid[2];
+      });
+
+  if (add_tag) {
+    mesh.add_tag<Omega_h::Real>(Omega_h::REGION, "centroid", 3, centroids);
+  }
+
+  return centroids;
+}
+
 void TallyTimes::PrintTimes() const {
   printf("\n");
   printf("[TIME] Initialization time     : %f seconds\n", initialization_time);
