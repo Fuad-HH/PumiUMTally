@@ -28,7 +28,7 @@ struct TallyTimes {
 
 enum class SourceDistribution {
   UNIFORM, // Source uniformly distributed across the mesh
-  EQUAL,    // Source at centroids of each element
+  EQUAL,   // Source at centroids of each element
   ZERO     // in the zeroth element centroid
 };
 
@@ -198,7 +198,8 @@ struct PumiTallyImpl {
   TallyTimes tally_times; //!< Struct to hold times for different operations
 
   PumiTallyImpl(const std::string &mesh_filename, Omega_h::LO num_ptcls,
-                int argc, char **argv, SourceDistribution source_dist = SourceDistribution::ZERO);
+                int argc, char **argv,
+                SourceDistribution source_dist = SourceDistribution::ZERO);
 
   ~PumiTallyImpl() = default;
 

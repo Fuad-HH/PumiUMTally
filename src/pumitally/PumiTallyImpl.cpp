@@ -29,7 +29,8 @@ void TallyTimes::PrintTimes() const {
 }
 
 PumiTallyImpl::PumiTallyImpl(const std::string &mesh_filename,
-                             const Omega_h::LO num_ptcls, int argc, char **argv, const SourceDistribution source_dist)
+                             const Omega_h::LO num_ptcls, int argc, char **argv,
+                             const SourceDistribution source_dist)
     : num_particles(num_ptcls) {
   oh_mesh_filename = mesh_filename;
 
@@ -433,13 +434,14 @@ void apply_reflection_boundary_condition(
         // Material (%3d -> %3d)\n",
         //      pid, elem_ids[pid], next_elems[pid],
         //      class_ids[elem_ids[pid]], material_ids[pid]);
-        //printf("P %d in element %d hit lastExit %d xFace %d \n", pid,
+        // printf("P %d in element %d hit lastExit %d xFace %d \n", pid,
         //       elem_ids[pid], lastExit[pid], xFace[pid]);
-        //xFace[pid] = lastExit[pid];
-        Omega_h::LO hit_face = (lastExit[pid] == -1) ? xFace[pid] : lastExit[pid];
+        // xFace[pid] = lastExit[pid];
+        Omega_h::LO hit_face =
+            (lastExit[pid] == -1) ? xFace[pid] : lastExit[pid];
         xFace[pid] = hit_face;
         lastExit[pid] = hit_face;
-        ptcl_done[pid] = 1; // stop the particle after reflection
+        ptcl_done[pid] = 1;              // stop the particle after reflection
         next_elems[pid] = elem_ids[pid]; // reflects back to the same element
         OMEGA_H_CHECK_PRINTF(hit_face != -1,
                              "Error: xFace[%d] is -1 but "
@@ -456,8 +458,8 @@ void apply_reflection_boundary_condition(
             particle_destination(pid, 2) - particle_origin(pid, 2)};
         // reflect the particle direction
         Omega_h::Vector<3> reflected_vector =
-                incident_vector -
-                2.0 * Omega_h::inner_product(incident_vector, normal) * normal;
+            incident_vector -
+            2.0 * Omega_h::inner_product(incident_vector, normal) * normal;
 
         // change the particle's position
         // particle reaches the boundary
@@ -466,11 +468,11 @@ void apply_reflection_boundary_condition(
         particle_origin(pid, 2) = inter_points[pid * 3 + 2];
 
         particle_destination(pid, 0) =
-                particle_origin(pid, 0) + reflected_vector[0];
+            particle_origin(pid, 0) + reflected_vector[0];
         particle_destination(pid, 1) =
-                particle_origin(pid, 1) + reflected_vector[1];
+            particle_origin(pid, 1) + reflected_vector[1];
         particle_destination(pid, 2) =
-                particle_origin(pid, 2) + reflected_vector[2];
+            particle_origin(pid, 2) + reflected_vector[2];
       }
     }
   };
@@ -525,11 +527,10 @@ void distributeParticlesBasesOnVolume(Omega_h::Mesh &mesh,
   o::parallel_for(std::abs(extra_particles), add_or_remove_particles);
 }
 
-
 OMEGA_H_DEVICE o::Vector<3>
-barycentric2real(const o::Few<o::Vector<3>, 4>& tet_verts,
-const o::Vector<4>& bary) {
-  o::Vector<3> real_coords {0,0,0};
+barycentric2real(const o::Few<o::Vector<3>, 4> &tet_verts,
+                 const o::Vector<4> &bary) {
+  o::Vector<3> real_coords{0, 0, 0};
   for (int i = 0; i < 4; ++i) {
     real_coords += bary[i] * tet_verts[i];
   }
@@ -575,17 +576,17 @@ void initialize_uniform_source(Omega_h::Mesh &mesh,
     for (Omega_h::LO pid = pid_start; pid < pid_end; ++pid) {
       auto gen = random_pool.get_state();
       o::Real r1 = gen.drand(0.0, 1.0);
-	o::Real r2 = gen.drand(0.0, 1.0);
-	o::Real r3 = gen.drand(0.0, 1.0);
+      o::Real r2 = gen.drand(0.0, 1.0);
+      o::Real r3 = gen.drand(0.0, 1.0);
 
-	r1 = Kokkos::pow(r1, 1.0 / 3.0);
-	r2 = Kokkos::sqrt(r2);
-	o::Real a = 1.0 - r1;
-	o::Real b = r1 * (1.0 - r2);
-	o::Real c = r1 * r2 * (1.0 - r3);
-	o::Real d = r1 * r2 * r3;
+      r1 = Kokkos::pow(r1, 1.0 / 3.0);
+      r2 = Kokkos::sqrt(r2);
+      o::Real a = 1.0 - r1;
+      o::Real b = r1 * (1.0 - r2);
+      o::Real c = r1 * r2 * (1.0 - r3);
+      o::Real d = r1 * r2 * r3;
 
-	o::Vector<4> random_bcc{a, b, c, d};
+      o::Vector<4> random_bcc{a, b, c, d};
 
       random_pool.free_state(gen);
 
@@ -601,7 +602,6 @@ void initialize_uniform_source(Omega_h::Mesh &mesh,
   };
   o::parallel_for(mesh.nelems(), set_initial_positions);
 }
-
 
 void ApplyVacuumBC(const Omega_h::Mesh &mesh, PPPS *ptcls,
                    const Omega_h::Write<Omega_h::LO> &elem_ids,
