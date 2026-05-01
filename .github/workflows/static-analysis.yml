@@ -1,8 +1,10 @@
 name: Static Analysis
 
 on:
-  push:
-  pull_request:
+  workflow_run:
+    workflows: ["Test"]
+    types:
+      - completed
   workflow_dispatch:
 
 env:
@@ -11,9 +13,14 @@ env:
 jobs:
   clang-tidy:
     runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success')
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
 
       - name: Install dependencies
         uses: ./.github/actions/install-deps
@@ -35,6 +42,7 @@ jobs:
             -DCMAKE_CXX_COMPILER=mpicxx \
             -DCMAKE_C_COMPILER=mpicc \
             -DBUILD_SHARED_LIBS=ON \
+            -DPUMITALLY_ENABLE_DEGAS2=ON \
             -DCMAKE_CXX_CLANG_TIDY=${TIDY_CMD}
 
       - name: Build with clang-tidy

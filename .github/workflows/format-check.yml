@@ -2,8 +2,9 @@ name: Format Check
 
 on:
   push:
+    branches: [main]
   pull_request:
-  pull_request_target:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -30,6 +31,11 @@ jobs:
             echo "No C++ files found."
             exit 0
           fi
+
+          echo "Files to be checked:"
+          for file in "${files[@]}"; do
+            echo "  $file"
+          done
 
           clang-format-20 --version
           clang-format-20 -style=file --dry-run -Werror "${files[@]}"

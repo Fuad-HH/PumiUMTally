@@ -19,6 +19,33 @@ std::unique_ptr<PPPS> CreateParticleDS(const Omega_h::Mesh &mesh,
 
 void InitializeParticlesInElement0(Omega_h::Mesh &mesh, pumitally::PPPS *ptcls);
 
+Omega_h::Reals GetCentroids(Omega_h::Mesh &mesh, const bool add_tag) {
+  const auto coords = mesh.coords();
+  const auto nelems = mesh.nelems();
+  const auto e2v = mesh.ask_down(Omega_h::REGION, Omega_h::VERT).ab2b;
+
+  const Omega_h::Write<Omega_h::Real> centroids(nelems * 3, 0.0, "centroids");
+
+  // FIXME: Hardcoded for 3D tets
+  Omega_h::parallel_for(
+      "calculate centroids", nelems, OMEGA_H_LAMBDA(int e) {
+        const auto nodes = o::gather_verts<4>(e2v, e);
+        o::Few<o::Vector<3>, 4> elem_coords =
+            o::gather_vectors<4, 3>(coords, nodes);
+        o::Vector<3> centroid = o::average(elem_coords);
+
+        centroids[e * 3 + 0] = centroid[0];
+        centroids[e * 3 + 1] = centroid[1];
+        centroids[e * 3 + 2] = centroid[2];
+      });
+
+  if (add_tag) {
+    mesh.add_tag<Omega_h::Real>(Omega_h::REGION, "centroid", 3, centroids);
+  }
+
+  return centroids;
+}
+
 void TallyTimes::PrintTimes() const {
   printf("\n");
   printf("[TIME] Initialization time     : %f seconds\n", initialization_time);
@@ -29,7 +56,8 @@ void TallyTimes::PrintTimes() const {
 }
 
 PumiTallyImpl::PumiTallyImpl(const std::string &mesh_filename,
-                             const Omega_h::LO num_ptcls, int argc, char **argv)
+                             const Omega_h::LO num_ptcls, int argc, char **argv,
+                             const SourceDistribution source_dist)
     : num_particles(num_ptcls) {
   oh_mesh_filename = mesh_filename;
 
@@ -43,7 +71,22 @@ PumiTallyImpl::PumiTallyImpl(const std::string &mesh_filename,
   // todo can track lengths be here?
 
   LoadMeshAndInitParticles(argc, argv);
-  InitializeParticlesInElement0(*p_picparts->mesh(), pumipic_ptcls.get());
+
+  switch (source_dist) {
+  case SourceDistribution::UNIFORM:
+    throw std::runtime_error(
+        "UNIFORM source distribution is not implemented yet");
+    break;
+  case SourceDistribution::EQUAL:
+    throw std::runtime_error(
+        "EQUAL source distribution is not implemented yet");
+    break;
+  case SourceDistribution::ZERO:
+    InitializeParticlesInElement0(*p_picparts->mesh(), pumipic_ptcls.get());
+    break;
+  default:
+    throw std::runtime_error("Invalid source distribution");
+  }
 
   p_particle_tracer = std::make_unique<
       ParticleTracer<PPParticle, pumitally::ParticleAtElemBoundary>>(
@@ -251,6 +294,340 @@ void UpdateCurrentElement(PPPS *ptcls,
     }
   };
   pumipic::parallel_for(ptcls, move_to_next, "move to next element");
+}
+
+void compute_boundary_normals(Omega_h::Mesh &mesh) {
+  const auto exposed_edges = Omega_h::mark_exposed_sides(&mesh);
+  const auto face2elems = mesh.ask_up(mesh.dim() - 1, mesh.dim()).ab2b;
+  const auto face2elemsOffset = mesh.ask_up(mesh.dim() - 1, mesh.dim()).a2ab;
+  const auto elem2nodes = mesh.ask_down(mesh.dim(), 0).ab2b;
+  const auto face2nodes = mesh.ask_down(mesh.dim() - 1, 0).ab2b;
+  const auto coords = mesh.coords();
+
+  Omega_h::Write<Omega_h::Real> normals(mesh.nfaces() * 3, 0.0,
+                                        "boundary_normals");
+
+  // calculate the normals for the exposed edges
+  auto calculate_normals = OMEGA_H_LAMBDA(const Omega_h::LO &face_id) {
+    if (exposed_edges[face_id]) {
+      // get this face's nodes
+      const auto face_nodes = Omega_h::gather_verts<3>(face2nodes, face_id);
+      const auto face_coords =
+          Omega_h::gather_vectors<3, 3>(coords, face_nodes);
+      const auto normal = Omega_h::cross(
+          face_coords[1] - face_coords[0],
+          face_coords[2] - face_coords[0]); // cross product to get normal
+
+      const auto norm = Omega_h::norm(normal);
+
+      // fix direction of the normal: get the fourth node of the element and
+      // check with it
+      const auto elem_id =
+          face2elems[face2elemsOffset[face_id]]; // edge sides only have one
+                                                 // element
+      const auto elem_nodes = Omega_h::gather_verts<4>(elem2nodes, elem_id);
+      int fourth_node = -1;
+      for (int i = 0; i < 4; ++i) {
+        if (elem_nodes[i] != face_nodes[0] && elem_nodes[i] != face_nodes[1] &&
+            elem_nodes[i] != face_nodes[2]) {
+          fourth_node = elem_nodes[i];
+          break;
+        }
+      }
+      OMEGA_H_CHECK_PRINTF(fourth_node != -1,
+                           "Error: fourth node not found for face %d\n",
+                           face_id);
+
+      const Omega_h::Vector<3> fourth_node_coord = {
+          coords[fourth_node * 3 + 0], coords[fourth_node * 3 + 1],
+          coords[fourth_node * 3 + 2]};
+
+      // check if the normal points towards the fourth node
+      Omega_h::Vector<3> fourth_2_face_vector = {
+          fourth_node_coord[0] - face_coords[0][0],
+          fourth_node_coord[1] - face_coords[0][1],
+          fourth_node_coord[2] - face_coords[0][2]};
+
+      Omega_h::Vector<3> inner_norm;
+      if (Omega_h::inner_product(normal, fourth_2_face_vector) < 0) {
+        // flip the normal if it points away from the fourth node
+        for (int i = 0; i < 3; ++i) {
+          inner_norm[i] = -normal[i] / norm;
+        }
+      } else {
+        for (int i = 0; i < 3; ++i) {
+          inner_norm[i] = normal[i] / norm;
+        }
+      }
+      // store the normal in the normals array
+      normals[face_id * 3 + 0] = inner_norm[0];
+      normals[face_id * 3 + 1] = inner_norm[1];
+      normals[face_id * 3 + 2] = inner_norm[2];
+    }
+  };
+  Omega_h::parallel_for(mesh.nfaces(), calculate_normals,
+                        "compute boundary normals");
+  mesh.add_tag(Omega_h::FACE, "normals", 3, Omega_h::Reals(normals));
+}
+
+OMEGA_H_DEVICE o::Real volume_tet(const o::Few<o::Vector<3>, 4> &tet_verts) {
+  o::Few<o::Vector<3>, 3> basis33 = {tet_verts[1] - tet_verts[0],
+                                     tet_verts[2] - tet_verts[0],
+                                     tet_verts[3] - tet_verts[0]};
+  auto volume = o::tet_volume_from_basis(basis33);
+  return volume;
+}
+
+o::Real volume_of_3d_mesh(o::Mesh &mesh) {
+  OMEGA_H_CHECK_PRINTF(mesh.dim() == 3,
+                       "Volume calculation is only supported for 3D meshes, "
+                       "but got %dD mesh\n",
+                       mesh.dim());
+  const auto coords = mesh.coords();
+  const auto elems2nodes = mesh.ask_down(o::REGION, o::VERT).ab2b;
+  const auto n_elems = mesh.nelems();
+  o::Real total_volume = 0.0;
+
+  Kokkos::parallel_reduce(
+      n_elems,
+      KOKKOS_LAMBDA(const int i, o::Real &local_volume) {
+        auto elem_nodes = o::gather_verts<4>(elems2nodes, i);
+        o::Few<o::Vector<3>, 4> elem_coords;
+        elem_coords = o::gather_vectors<4, 3>(coords, elem_nodes);
+        o::Real elem_volume = volume_tet(elem_coords);
+        local_volume += elem_volume;
+      },
+      Kokkos::Sum<o::Real>(total_volume));
+
+  return total_volume;
+}
+
+void apply_reflection_boundary_condition(
+    Omega_h::Mesh &mesh, PPPS *ptcls, Omega_h::Write<Omega_h::LO> &elem_ids,
+    Omega_h::Write<Omega_h::LO> &next_elems,
+    Omega_h::Write<Omega_h::LO> &ptcl_done,
+    Omega_h::Write<Omega_h::LO> &lastExit, Omega_h::Write<Omega_h::LO> &xFace,
+    Omega_h::Write<Omega_h::Real> &inter_points,
+    Omega_h::Write<int> material_ids, bool initial) {
+
+  // TODO: make this a member variable of the struct
+  auto particle_destination = ptcls->get<1>();
+  auto particle_origin = ptcls->get<0>();
+
+  const auto class_ids = mesh.get_array<int>(3, "class_id");
+  const auto normals = mesh.get_array<Omega_h::Real>(Omega_h::FACE, "normals");
+
+  auto checkExposedEdges =
+      PS_LAMBDA(const int e, const int pid, const int mask) {
+    if (mask > 0 && !ptcl_done[pid]) {
+      bool reached_destination = (lastExit[pid] == -1);
+      bool hit_outer_boundary =
+          ((next_elems[pid] == -1) && (elem_ids[pid] != -1));
+
+      // for the initial run, we need to find the initial position of the
+      // particles
+      bool hit_material_boundary = false;
+      if (!initial) { // stop at geometry boundary
+        if (next_elems[pid] != -1) {
+          if (class_ids[elem_ids[pid]] !=
+              class_ids[next_elems[pid]]) { // particle crosses geometry
+            // boundary
+            hit_material_boundary = true;
+            material_ids[pid] = class_ids[next_elems[pid]];
+          }
+        } else {
+          material_ids[pid] = -1; // no material id if not in an element
+        }
+      }
+
+      ptcl_done[pid] =
+          (reached_destination || hit_material_boundary) ? 1 : ptcl_done[pid];
+      // assert that if the next element is -1, then the material id is -1
+      if (!initial) {
+        if (next_elems[pid] == -1) {
+          OMEGA_H_CHECK_PRINTF(
+              material_ids[pid] == -1,
+              "Error: next_elems[%d] is -1 but material_ids[%d] "
+              "is %d\n",
+              pid, pid, material_ids[pid]);
+        }
+        // printf("Pid %d next element %d, elem id %d, material id %d\n",
+        //        pid, next_elems[pid], elem_ids[pid], material_ids[pid]);
+      }
+
+      // reflective boundary condition
+      if (hit_outer_boundary) { // just reached the boundary
+        // printf("Moving particle %4d (from -> to): element (%5d -> %5d)
+        // Material (%3d -> %3d)\n",
+        //      pid, elem_ids[pid], next_elems[pid],
+        //      class_ids[elem_ids[pid]], material_ids[pid]);
+        // printf("P %d in element %d hit lastExit %d xFace %d \n", pid,
+        //       elem_ids[pid], lastExit[pid], xFace[pid]);
+        // xFace[pid] = lastExit[pid];
+        Omega_h::LO hit_face =
+            (lastExit[pid] == -1) ? xFace[pid] : lastExit[pid];
+        xFace[pid] = hit_face;
+        lastExit[pid] = hit_face;
+        ptcl_done[pid] = 1;              // stop the particle after reflection
+        next_elems[pid] = elem_ids[pid]; // reflects back to the same element
+        OMEGA_H_CHECK_PRINTF(hit_face != -1,
+                             "Error: xFace[%d] is -1 but "
+                             "hit_outer_boundary is true\n",
+                             pid);
+
+        // change direction
+        auto normal = Omega_h::Vector<3>{normals[hit_face * 3 + 0],
+                                         normals[hit_face * 3 + 1],
+                                         normals[hit_face * 3 + 2]};
+        Omega_h::Vector<3> incident_vector = {
+            particle_destination(pid, 0) - particle_origin(pid, 0),
+            particle_destination(pid, 1) - particle_origin(pid, 1),
+            particle_destination(pid, 2) - particle_origin(pid, 2)};
+        // reflect the particle direction
+        Omega_h::Vector<3> reflected_vector =
+            incident_vector -
+            2.0 * Omega_h::inner_product(incident_vector, normal) * normal;
+
+        // change the particle's position
+        // particle reaches the boundary
+        particle_origin(pid, 0) = inter_points[pid * 3];
+        particle_origin(pid, 1) = inter_points[pid * 3 + 1];
+        particle_origin(pid, 2) = inter_points[pid * 3 + 2];
+
+        particle_destination(pid, 0) =
+            particle_origin(pid, 0) + reflected_vector[0];
+        particle_destination(pid, 1) =
+            particle_origin(pid, 1) + reflected_vector[1];
+        particle_destination(pid, 2) =
+            particle_origin(pid, 2) + reflected_vector[2];
+      }
+    }
+  };
+  pumipic::parallel_for(ptcls, checkExposedEdges,
+                        "apply reflective boundary condition");
+}
+
+void distributeParticlesBasesOnVolume(Omega_h::Mesh &mesh,
+                                      pumitally::PPPS::kkLidView ppe,
+                                      const int numPtcls) {
+  OMEGA_H_CHECK_PRINTF(mesh.dim() == 3,
+                       "Distributing particles based on volume is only "
+                       "supported for 3D meshes, but got %dD mesh\n",
+                       mesh.dim());
+  o::LO ne = mesh.nelems();
+  o::Real mesh_volume = volume_of_3d_mesh(mesh);
+  OMEGA_H_CHECK(mesh_volume > 0.0);
+
+  auto coords = mesh.coords();
+  auto element2nodes = mesh.ask_down(o::REGION, o::VERT).ab2b;
+
+  auto distribute_based_on_volume = OMEGA_H_LAMBDA(o::LO e) {
+    auto verts = o::gather_verts<4>(element2nodes, e);
+    auto vert_coords = o::gather_vectors<4, 3>(coords, verts);
+    o::Real vol = volume_tet(vert_coords);
+#ifdef DEBUG
+    OMEGA_H_CHECK(area > 0.0);
+#endif
+    o::Real volume_fraction = vol / mesh_volume;
+    ppe[e] = std::round(numPtcls * volume_fraction);
+  };
+  o::parallel_for(ne, distribute_based_on_volume);
+
+  Omega_h::LO totPtcls = 0;
+  Kokkos::parallel_reduce(
+      ppe.size(),
+      OMEGA_H_LAMBDA(const int i, Omega_h::LO &lsum) { lsum += ppe[i]; },
+      totPtcls);
+
+  // remove or add particles to match the total number of particles
+  int extra_particles = numPtcls - totPtcls;
+  // go throught the first extra_particles elements and add/remove one particle
+  OMEGA_H_CHECK_PRINTF(extra_particles <= mesh.nelems(),
+                       "Extra particles (%d) should be less than or equal to "
+                       "number of elements (%d)\n",
+                       extra_particles, mesh.nelems());
+
+  int add_remove = (extra_particles > 0) ? 1 : -1;
+  auto add_or_remove_particles = OMEGA_H_LAMBDA(o::LO e) {
+    ppe[e] += add_remove;
+  };
+  o::parallel_for(std::abs(extra_particles), add_or_remove_particles);
+}
+
+OMEGA_H_DEVICE o::Vector<3>
+barycentric2real(const o::Few<o::Vector<3>, 4> &tet_verts,
+                 const o::Vector<4> &bary) {
+  o::Vector<3> real_coords{0, 0, 0};
+  for (int i = 0; i < 4; ++i) {
+    real_coords += bary[i] * tet_verts[i];
+  }
+  return real_coords;
+}
+
+void initialize_uniform_source(Omega_h::Mesh &mesh,
+                               Omega_h::Write<Omega_h::Real> particle_positions,
+                               pumitally::PPPS::kkLidView ppe) {
+  int dim = mesh.dim();
+  OMEGA_H_CHECK(dim == 3);
+
+  // cumulative sum of particles per element
+  Omega_h::Write<Omega_h::LO> cumulative_particles(mesh.nelems() + 1, 0);
+  Omega_h::LO num_particles_cumsum = 0;
+  auto calculate_cumulative_number_of_particles =
+      KOKKOS_LAMBDA(const int &e, Omega_h::LO &cumulative, bool is_final) {
+    auto num_particles = ppe[e];
+    cumulative += num_particles;
+    if (is_final) {
+      cumulative_particles[e + 1] = cumulative;
+    }
+  };
+  Kokkos::parallel_scan("calculate_cumulative_number_of_particles",
+                        mesh.nelems(), calculate_cumulative_number_of_particles,
+                        num_particles_cumsum);
+
+  OMEGA_H_CHECK_PRINTF(num_particles_cumsum == particle_positions.size() / 3,
+                       "Total number of particles (%ld) does not match "
+                       "cumulative particles (%ld)\n",
+                       particle_positions.size() / 3, num_particles_cumsum);
+
+  const auto cells2nodes = mesh.ask_down(o::REGION, o::VERT).ab2b;
+  const auto coords = mesh.coords();
+
+  Kokkos::Random_XorShift64_Pool<Kokkos::DefaultExecutionSpace> random_pool(0);
+  auto set_initial_positions = OMEGA_H_LAMBDA(const int &e) {
+    auto pid_start = cumulative_particles[e];
+    auto pid_end = cumulative_particles[e + 1];
+    auto num_particles_in_element = pid_end - pid_start;
+    OMEGA_H_CHECK(num_particles_in_element >= 0);
+
+    for (Omega_h::LO pid = pid_start; pid < pid_end; ++pid) {
+      auto gen = random_pool.get_state();
+      o::Real r1 = gen.drand(0.0, 1.0);
+      o::Real r2 = gen.drand(0.0, 1.0);
+      o::Real r3 = gen.drand(0.0, 1.0);
+
+      r1 = Kokkos::pow(r1, 1.0 / 3.0);
+      r2 = Kokkos::sqrt(r2);
+      o::Real a = 1.0 - r1;
+      o::Real b = r1 * (1.0 - r2);
+      o::Real c = r1 * r2 * (1.0 - r3);
+      o::Real d = r1 * r2 * r3;
+
+      o::Vector<4> random_bcc{a, b, c, d};
+
+      random_pool.free_state(gen);
+
+      auto verts = o::gather_verts<4>(cells2nodes, e);
+      auto vert_coords = o::gather_vectors<4, 3>(coords, verts);
+
+      auto real_loc = barycentric2real(vert_coords, random_bcc);
+
+      particle_positions[pid * 3 + 0] = real_loc[0];
+      particle_positions[pid * 3 + 1] = real_loc[1];
+      particle_positions[pid * 3 + 2] = real_loc[2];
+    }
+  };
+  o::parallel_for(mesh.nelems(), set_initial_positions);
 }
 
 void ApplyVacuumBC(const Omega_h::Mesh &mesh, PPPS *ptcls,
