@@ -415,7 +415,7 @@ InputParameters::InputParameters(const int argc, char *argv[]) {
 // todo: split this function to sample uniform direction and sample energy
 // and move to impl class
 void SampleInitialParticleState(const Kokkos::View<double *> &energy_array,
-                                Kokkos::View<double *> &direction,
+                                const Kokkos::View<double *> &direction,
                                 const Kokkos::View<double *> &alpha) {
   const random_pool_t random_pool(SEED);
 
