@@ -1,0 +1,48 @@
+cff-version: 1.2.0
+message: Please cite the following works when using this software.
+preferred-citation:
+  authors:
+    - family-names: Hasan
+      given-names: Fuad
+      orcid: "https://orcid.org/0009-0001-7043-6657"
+    - family-names: Smith
+      given-names: Cameron
+      name-particle: W
+    - family-names: Shephard
+      given-names: Mark
+      name-particle: S
+    - family-names: Churchill
+      given-names: R. Michael
+    - family-names: Wilkie
+      given-names: George
+      name-particle: J
+      orcid: "https://orcid.org/0000-0002-6826-6273"
+    - family-names: Romano
+      given-names: Paul
+      name-particle: K
+      orcid: "https://orcid.org/0000-0002-1147-045X"
+    - family-names: Shriwise
+      given-names: Patrick
+      name-particle: C
+      orcid: "https://orcid.org/0000-0002-3979-7665"
+    - family-names: Merson
+      given-names: Jacob
+      name-particle: S
+      orcid : "https://orcid.org/0000-0002-6813-6532"
+  identifiers:
+    - type: url
+      value: https://arxiv.org/abs/2504.19048
+    - type: doi
+      value: 10.48550/arXiv.2504.19048
+  title: >-
+    GPU Acceleration of Monte Carlo Tallies on Unstructured Meshes in OpenMC
+    with PUMI-Tally
+  url: https://arxiv.org/abs/2504.19048
+  date-published: 2025-04-26
+  year: 2025
+  type: software
+  repository-code: 'https://github.com/fuad-hh/pumitally'
+  keywords:
+    - Monte Carlo
+    - Unstructured Mesh
+    - HPC
