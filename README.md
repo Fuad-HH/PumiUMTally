@@ -1,9 +1,10 @@
+# PUMI-Tally
 [![Test](https://github.com/Fuad-HH/PumiUMTally/actions/workflows/test.yml/badge.svg)](https://github.com/Fuad-HH/PumiUMTally/actions/workflows/test.yml)
 [![Static Analysis](https://github.com/Fuad-HH/PumiUMTally/actions/workflows/static-analysis.yml/badge.svg)](https://github.com/Fuad-HH/PumiUMTally/actions/workflows/static-analysis.yml)
 [![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
-# PUMI-Tally
 
 **GPU-accelerated unstructured mesh tallies for Monte Carlo particle transport**
+
 
 PUMI-Tally accelerates unstructured mesh tallies in Monte Carlo neutral particle transport simulations by exploiting mesh adjacency information on CPUs and GPUs. Built on top of [PUMIPic](https://github.com/SCOREC/pumi-pic) and [Kokkos](https://kokkos.org/), it provides distributed parallel particle and mesh data structures with [Omega_h](https://github.com/SCOREC/omega_h).
 
