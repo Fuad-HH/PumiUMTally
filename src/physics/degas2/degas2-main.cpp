@@ -28,29 +28,22 @@ void SampleInitialParticleState(const Kokkos::View<double *> &energy_array,
                                 const Kokkos::View<double *> &direction,
                                 const Kokkos::View<double *> &alpha);
 
-template <typename T>
-void vector2write(const std::vector<T> &vec, Omega_h::Write<T> &write_vec) {
-  Omega_h::HostWrite<T> host_write_vec(vec.size());
-  for (size_t i = 0; i < vec.size(); ++i) {
-    host_write_vec[i] = vec[i];
-  }
-  write_vec = Omega_h::Write<T>(host_write_vec);
-}
-
-// todo: make it a set of reads, not writes
-// make the read field values and set fields to mesh members
 struct Fields {
-  std::vector<double> electron_temperature;
-  std::vector<double> ion_temperature;
-  std::vector<double> electron_density;
-  std::vector<double> ion_density;
-  std::vector<double> bulk_flow_velocity;
+  explicit Fields(const Omega_h::Reals &centroids);
+
+  /**
+   * Set the fields as mesh tag
+   * @param mesh Mesh to tag
+   */
+  void SetAsTag(Omega_h::Mesh &mesh) const;
+
+  Omega_h::Reals electron_temperature;
+  Omega_h::Reals ion_temperature;
+  Omega_h::Reals electron_density;
+  Omega_h::Reals ion_density;
+  Omega_h::Reals bulk_flow_velocity;
 };
-void get_field_values(const Omega_h::Reals &centroids, Fields &fields);
-void set_field_values_to_mesh(Omega_h::Mesh &mesh, const Fields &fields);
-// void set_source_particles(Omega_h::Mesh &mesh,
-//                         SourceDistribution source_distribution,
-//                           Omega_h::Write<Omega_h::Real> particle_positions);
+
 void Transport(pumitally::PumiTallyImpl &pumi_tally, DG2Physics &physics,
                const Omega_h::Read<Omega_h::Real> &electron_density,
                const Omega_h::Read<Omega_h::Real> &ion_density,
@@ -76,9 +69,8 @@ int main(int argc, char *argv[]) {
         input_params.source_distribution);
     auto &mesh = pumi_tally.full_mesh;
     const auto centroids = pumitally::GetCentroids(mesh);
-    Fields fields;
-    get_field_values(Omega_h::Reals(centroids), fields);
-    set_field_values_to_mesh(mesh, fields);
+    Fields fields(centroids);
+    fields.SetAsTag(mesh);
     pumi_tally.is_pumipic_initialized = true;
 
     Kokkos::View<Omega_h::Real ***> sigma_t;            // mat, T, g
@@ -275,41 +267,27 @@ void set_source_particles(Omega_h::Mesh &mesh,
 }
 */
 
-void set_field_values_to_mesh(Omega_h::Mesh &mesh, const Fields &fields) {
-  OMEGA_H_CHECK_PRINTF(fields.electron_temperature.size() == mesh.nelems(),
+void Fields::SetAsTag(Omega_h::Mesh &mesh) const {
+  OMEGA_H_CHECK_PRINTF(electron_temperature.size() == mesh.nelems(),
                        "Electron temperature size (%d) must be equal to number "
                        "of elements (%d)\n",
-                       fields.electron_temperature.size(), mesh.nelems());
+                       electron_temperature.size(), mesh.nelems());
   OMEGA_H_CHECK_PRINTF(
-      fields.ion_temperature.size() == mesh.nelems(),
+      ion_temperature.size() == mesh.nelems(),
       "Ion temperature size (%d) must be equal to number of elements (%d)\n",
-      fields.ion_temperature.size(), mesh.nelems());
+      ion_temperature.size(), mesh.nelems());
   OMEGA_H_CHECK_PRINTF(
-      fields.electron_density.size() == mesh.nelems(),
+      electron_density.size() == mesh.nelems(),
       "Electron density size (%d) must be equal to number of elements (%d)\n",
-      fields.electron_density.size(), mesh.nelems());
+      electron_density.size(), mesh.nelems());
   OMEGA_H_CHECK_PRINTF(
-      fields.ion_density.size() == mesh.nelems(),
+      ion_density.size() == mesh.nelems(),
       "Ion density size (%d) must be equal to number of elements (%d)\n",
-      fields.ion_density.size(), mesh.nelems());
-  OMEGA_H_CHECK_PRINTF(fields.bulk_flow_velocity.size() == mesh.nelems() * 3,
+      ion_density.size(), mesh.nelems());
+  OMEGA_H_CHECK_PRINTF(bulk_flow_velocity.size() == mesh.nelems() * 3,
                        "Bulk flow velocity size (%d) must be equal to number "
                        "of elements * 3 (%d)\n",
-                       fields.bulk_flow_velocity.size(), mesh.nelems() * 3);
-
-  Omega_h::Write<Omega_h::Real> electron_temperature(
-      fields.electron_temperature.size());
-  Omega_h::Write<Omega_h::Real> ion_temperature(fields.ion_temperature.size());
-  Omega_h::Write<Omega_h::Real> electron_density(
-      fields.electron_density.size());
-  Omega_h::Write<Omega_h::Real> ion_density(fields.ion_density.size());
-  Omega_h::Write<Omega_h::Real> bulk_flow_velocity(
-      fields.bulk_flow_velocity.size());
-  vector2write(fields.electron_temperature, electron_temperature);
-  vector2write(fields.ion_temperature, ion_temperature);
-  vector2write(fields.electron_density, electron_density);
-  vector2write(fields.ion_density, ion_density);
-  vector2write(fields.bulk_flow_velocity, bulk_flow_velocity);
+                       bulk_flow_velocity.size(), mesh.nelems() * 3);
 
   // Assuming the mesh has a field for each of the properties
   mesh.add_tag<Omega_h::Real>(Omega_h::REGION, "electron_temperature", 1,
@@ -327,31 +305,19 @@ void set_field_values_to_mesh(Omega_h::Mesh &mesh, const Fields &fields) {
 // NOTE: This requires the python script and the plasma source mesh and data
 // to be in the folder with this cpp file. The python script may need to be
 // updated to read in different plasma source data.
-void get_field_values(const Omega_h::Reals &centroids, Fields &fields) {
+Fields::Fields(const Omega_h::Reals &centroids) {
   auto centroids_h = Omega_h::HostRead<Omega_h::Real>(centroids);
 
   // This function should be implemented to retrieve the field values
   // based on the centroids provided (read centroids_h on CPU.
   // It contains centroids like e0_0, e0_1, e0_2, e1_0, e1_1, e1_2, ....)
   // For now, we will just fill the fields with dummy data.
-  size_t num_elements = centroids.size() / 3; // Assuming 3D
-  fields.electron_temperature.resize(num_elements, 1.0);
-  fields.ion_temperature.resize(num_elements, 1.0);
-  fields.electron_density.resize(num_elements, 1.0);
-  fields.ion_density.resize(num_elements, 1.0);
-  fields.bulk_flow_velocity.resize(3 * num_elements, 0.0);
-
-  // TODO: Add your code here to retrieve the actual field values
-  // Write centroid coords to CSV to be read by Python script
-  std::ofstream coords("centroid_coords.csv");
-  for (int j = 0; j < (centroids_h.size() / 3); j++) {
-    coords << j << "," << centroids_h[j * 3 + 0] << ","
-           << centroids_h[j * 3 + 1] << "," << centroids_h[j * 3 + 2] << '\n';
-  }
-  coords.close();
-
-  // Run the Python script
-  // system("python Mesh_Map.py");
+  const Omega_h::LO num_elements = centroids.size() / 3; // Assuming 3D
+  Omega_h::HostWrite<Omega_h::Real> host_electron_temperature(num_elements, "host_e_temp");
+  Omega_h::HostWrite<Omega_h::Real> host_ion_temperature(num_elements, "host_i_temp");
+  Omega_h::HostWrite<Omega_h::Real> host_electron_density(num_elements, "host_e_density");
+  Omega_h::HostWrite<Omega_h::Real> host_ion_density(num_elements, "host_i_density");
+  Omega_h::HostWrite<Omega_h::Real> host_bulk_flow_velocity(3 * num_elements, "host_bulk_flow_velocity");
 
   // Read in the field values
   std::ifstream fieldvals{"vals.csv"};
@@ -368,13 +334,18 @@ void get_field_values(const Omega_h::Reals &centroids, Fields &fields) {
     std::getline(fieldvals, zz_string, '\n');
 
     // Asign field values
-    fields.ion_density[i] = std::stod(xx_string);
-    fields.electron_density[i] = std::stod(xx_string);
-    fields.electron_temperature[i] = std::stod(yy_string);
-    fields.ion_temperature[i] = std::stod(zz_string);
+    host_ion_density[i] = std::stod(xx_string);
+    host_electron_density[i] = std::stod(xx_string);
+    host_electron_temperature[i] = std::stod(yy_string);
+    host_ion_temperature[i] = std::stod(zz_string);
 
     i++;
   }
+
+  ion_density = Omega_h::Reals(host_ion_density);
+  electron_density = Omega_h::Reals(host_electron_density);
+  electron_temperature = Omega_h::Reals(host_electron_temperature);
+  ion_temperature = Omega_h::Reals(host_ion_temperature);
 }
 
 void PrintInitialInfo(const std::string &mesh_name,
