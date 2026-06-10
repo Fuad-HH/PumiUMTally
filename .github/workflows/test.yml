@@ -2,11 +2,14 @@ name: Test
 
 on:
   push:
+    branches: [main]
   pull_request:
+    branches: [main]
   workflow_dispatch:
 
 env:
   DEPS_DIR: ${{ github.workspace }}/deps
+  LD_LIBRARY_PATH: ${{ github.workspace }}/deps/lib
 
 jobs:
   ctest:
@@ -26,12 +29,17 @@ jobs:
             -DCMAKE_PREFIX_PATH=$DEPS_DIR \
             -DCMAKE_CXX_COMPILER=mpicxx \
             -DCMAKE_C_COMPILER=mpicc \
-            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_BUILD_TYPE=Debug \
             -DBUILD_SHARED_LIBS=ON \
-            -DPUMITALLYOPENMC_ENABLE_TESTS=ON
+            -DPUMITALLY_ENABLE_DEGAS2=ON \
+            -DPUMITALLY_ENABLE_TESTS=ON
 
       - name: Build
         run: cmake --build build -j$(nproc)
 
       - name: Run tests
-        run: ctest --test-dir build --output-on-failure
+        run: |
+          export OMP_PROC_BIND=spread
+          export OMP_PLACES=threads
+          export OMP_NUM_THREADS=$(nproc)
+          ctest --test-dir build --output-on-failure

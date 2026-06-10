@@ -8,6 +8,7 @@ option(BUILD_SHARED_LIBS                    "Build shared libraries"        ON)
 option(PUMITALLY_ENABLE_TESTS               "Enable tests"                  OFF)
 option(PUMITALLY_USE_KOKKOS_CUDA            "Use CUDA"                      OFF)
 option(PUMITALLY_MEASURE_TIME               "Measure time"                  OFF)
+option(PUMITALLY_ENABLE_DEGAS2              "Enable Degas2"                 OFF)
 ###################################################################
 
 ################################## PUMIPIC ########################
@@ -29,6 +30,18 @@ set(PUMITALLY_SOURCES
         src/pumitally/PumiTally.cpp
         src/pumitally/PumiTallyImpl.cpp
 )
+
+if(PUMITALLY_ENABLE_DEGAS2)
+    set(PUMITALLY_DEGAS2_HEADERS
+            src/physics/degas2/DG2Physics.h
+            src/physics/degas2/DG2CrossSection.h
+    )
+    set(PUMITALLY_DEGAS2_SOURCES
+            src/physics/degas2/DG2Physics.cpp
+            src/physics/degas2/DG2CrossSection.cpp
+    )
+endif()
+
 
 
 ################################## Testing ########################
@@ -72,6 +85,21 @@ if(PUMITALLY_MEASURE_TIME)
     endif()
 
     target_compile_definitions(pumitally PRIVATE -DPUMITALLY_MEASURE_TIME)
+endif()
+
+if(PUMITALLY_ENABLE_DEGAS2)
+    add_library(pumitally_degas2)
+    target_sources(pumitally_degas2 PRIVATE ${PUMITALLY_DEGAS2_SOURCES})
+    target_link_libraries(pumitally_degas2 PRIVATE pumipic::pumipic)
+
+    add_executable(degas2 src/physics/degas2/degas2-main.cpp)
+    target_link_libraries(degas2 PRIVATE pumitally_degas2 pumitally pumipic::pumipic)
+    target_include_directories(degas2
+            PRIVATE
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+            $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+            ${CMAKE_SOURCE_DIR}/src/pumitally
+    )
 endif()
 ###################################################################
 
@@ -136,6 +164,26 @@ install(FILES
   ${CMAKE_CURRENT_BINARY_DIR}/pumitallyConfig.cmake
   DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/pumitally
 )
+
+if(PUMITALLY_ENABLE_DEGAS2)
+    install(TARGETS pumitally_degas2
+      EXPORT pumitallyTargets
+      LIBRARY DESTINATION   ${CMAKE_INSTALL_LIBDIR}
+      ARCHIVE DESTINATION   ${CMAKE_INSTALL_LIBDIR}
+      RUNTIME DESTINATION   ${CMAKE_INSTALL_BINDIR}
+      INCLUDES DESTINATION  ${CMAKE_INSTALL_INCLUDEDIR}
+            PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/pumitally
+    )
+    install(EXPORT pumitallyTargets
+      FILE pumitally_degas2Targets.cmake
+      NAMESPACE pumitally::
+      DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/pumitally
+    )
+    install(FILES
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/physics/degas2/DG2Physics.h
+      DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/pumitally/physics/degas2
+    )
+endif()
 
 ###################################################################
 
