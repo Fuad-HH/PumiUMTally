@@ -270,6 +270,9 @@ struct ParticleAtElemBoundary {
 
   // --- Boundary condition ---
   BoundaryCondition boundary_condition;       //!< Active boundary condition
+  Omega_h::Reals boundary_normals;            //!< Pre-computed boundary normals
+                                              //!< (stored separately from mesh so
+                                              //!<  they survive mesh copies)
 
   // temporary gabe merging variables
   // these will be removed after the operator functinality is merged to both

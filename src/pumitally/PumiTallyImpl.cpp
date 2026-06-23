@@ -419,6 +419,9 @@ o::Real volume_of_3d_mesh(o::Mesh &mesh) {
   return total_volume;
 }
 
+// OpenMC uses continuous reflection approach,
+// that is, the particle direction changes and
+// then a new path length is sampled.
 void apply_reflection_boundary_condition(
     const Omega_h::Mesh &mesh, PPPS *ptcls,
     const Omega_h::Write<Omega_h::LO> &elem_ids,
@@ -427,13 +430,14 @@ void apply_reflection_boundary_condition(
     const Omega_h::Write<Omega_h::LO> &lastExit,
     const Omega_h::Write<Omega_h::LO> &xFace,
     const Omega_h::Write<Omega_h::Real> &inter_points,
-    const Omega_h::Write<int> &material_ids, bool initial) {
+    const Omega_h::Write<int> &material_ids, bool initial,
+    const Omega_h::Reals &face_normals) {
 
   auto particle_destination = ptcls->get<1>();
   auto particle_origin = ptcls->get<0>();
 
   const auto class_ids = mesh.get_array<int>(3, "class_id");
-  const auto normals = mesh.get_array<Omega_h::Real>(Omega_h::FACE, "normals");
+  const auto normals = face_normals;
 
   auto checkExposedEdges =
       PS_LAMBDA(const int e, const int pid, const int mask) {
@@ -471,7 +475,10 @@ void apply_reflection_boundary_condition(
             (lastExit[pid] == -1) ? xFace[pid] : lastExit[pid];
         xFace[pid] = hit_face;
         lastExit[pid] = hit_face;
-        ptcl_done[pid] = 1;
+        // NOTE: Do NOT set ptcl_done here. The reflected track still needs
+        // to be traced from the boundary intersection to the reflected
+        // destination. Setting ptcl_done would skip that segment, losing
+        // the reflected contribution from the tally.
         next_elems[pid] = elem_ids[pid];
 
         OMEGA_H_CHECK_PRINTF(hit_face != -1,
@@ -483,11 +490,14 @@ void apply_reflection_boundary_condition(
                                          normals[hit_face * 3 + 1],
                                          normals[hit_face * 3 + 2]};
         Omega_h::Vector<3> incident_vector = {
-            particle_destination(pid, 0) - particle_origin(pid, 0),
-            particle_destination(pid, 1) - particle_origin(pid, 1),
-            particle_destination(pid, 2) - particle_origin(pid, 2)};
+            particle_destination(pid, 0) - inter_points[pid * 3],
+            particle_destination(pid, 1) - inter_points[pid * 3 + 1],
+            particle_destination(pid, 2) - inter_points[pid * 3 + 2]};
 
         // Specular reflection: reflected = incident - 2*(incident·normal)*normal
+        // Uses remaining displacement (dest - inter_point) as incident,
+        // particle direction is reflected
+        // and the remaining path length is conserved.
         Omega_h::Vector<3> reflected_vector =
             incident_vector -
             2.0 * Omega_h::inner_product(incident_vector, normal) * normal;
@@ -806,6 +816,10 @@ void ParticleAtElemBoundary::SetBoundaryCondition(BoundaryCondition bc,
       compute_boundary_normals(mesh);
       printf("[INFO] Computed boundary normals for reflective BC\n");
     }
+    // Store normals in the handler so they survive mesh copies.
+    // The ParticleTracer holds a copy of the mesh, and tags added
+    // after construction are not visible through that copy.
+    boundary_normals = mesh.get_array<Omega_h::Real>(Omega_h::FACE, "normals");
     printf("[INFO] Boundary condition set to REFLECTIVE (specular)\n");
   } else {
     printf("[INFO] Boundary condition set to VACUUM\n");
@@ -843,7 +857,7 @@ void ParticleAtElemBoundary::operator()(
     apply_reflection_boundary_condition(mesh, ptcls, elem_ids, next_elems,
                                         ptcl_done, last_exit, inter_faces,
                                         inter_points, mat_ids,
-                                        is_initial_track);
+                                        is_initial_track, boundary_normals);
     break;
   }
   }

@@ -58,7 +58,7 @@ const std::string kMeshFilename = "test/assets/tet6-222.osh";
 //           P0->(1.10,1.10,1.10) flying=1 (inside)
 //           P1->(2.10,0.90,0.90) flying=1 (x>2, reflects)
 //           P2->(0.90,1.70,0.90) flying=0 (stays)
-//           P3->(0.90,0.90,2.10) flying=1 (z>2, reflects)
+//           P3->(0.90,1.30,2.10) flying=1 (z>2, reflects)
 // clang-format on
 
 // NOTE: non-const — API functions take double*, int8_t* (non-const pointers)
@@ -128,170 +128,6 @@ void require_positions_match(pumitally::PPPS *ptcls,
   }
 }
 
-// ---------------------------------------------------------------------------
-// Helper: write particle paths as a VTP (ParaView PolyData) file
-// ---------------------------------------------------------------------------
-//
-// Produces an ASCII VTP file containing one polyline per particle,
-// connecting the positions the particle visits across moves.
-// Point data includes particle_id and step_index so individual
-// paths and segments can be filtered in ParaView.
-//
-// The VTP can be opened alongside the mesh VTK output to visually verify
-// that particle tracks stay within the domain and cross expected elements.
-//
-// @param filename   Output .vtp file path
-// @param paths      Per-particle sequence of 3D positions.
-//                   paths[p][s] = {x, y, z} for particle p at step s.
-void write_particle_paths_vtp(
-    const std::string &filename,
-    const std::vector<std::vector<std::array<double, 3>>> &paths) {
-
-  const int num_particles = static_cast<int>(paths.size());
-
-  // Count total points across all particles
-  int64_t total_points = 0;
-  for (int p = 0; p < num_particles; ++p) {
-    total_points += static_cast<int64_t>(paths[p].size());
-  }
-
-  if (total_points == 0) {
-    fprintf(stderr, "[WARN] write_particle_paths_vtp: no points to write\n");
-    return;
-  }
-
-  std::ofstream vtp(filename);
-  if (!vtp.is_open()) {
-    fprintf(stderr, "[ERROR] Cannot open VTP file for writing: %s\n",
-            filename.c_str());
-    return;
-  }
-
-  vtp.precision(12);
-  vtp << std::fixed;
-
-  // --- XML / VTKFile header ---
-  vtp << "<?xml version=\"1.0\"?>\n";
-  vtp << "<VTKFile type=\"PolyData\" version=\"0.1\" "
-         "byte_order=\"LittleEndian\">\n";
-  vtp << "  <PolyData>\n";
-  vtp << "    <Piece NumberOfPoints=\"" << total_points << "\""
-      << " NumberOfVerts=\"0\""
-      << " NumberOfLines=\"" << num_particles << "\""
-      << " NumberOfStrips=\"0\""
-      << " NumberOfPolys=\"0\">\n";
-
-  // --- Points (coordinates) ---
-  vtp << "      <Points>\n";
-  vtp << "        <DataArray type=\"Float64\" Name=\"Points\" "
-         "NumberOfComponents=\"3\" format=\"ascii\">\n";
-  for (const auto &path : paths) {
-    for (const auto &pt : path) {
-      vtp << "          " << pt[0] << " " << pt[1] << " " << pt[2] << "\n";
-    }
-  }
-  vtp << "        </DataArray>\n";
-  vtp << "      </Points>\n";
-
-  // --- PointData: particle_id and step_index ---
-  vtp << "      <PointData>\n";
-
-  // particle_id — which particle this point belongs to
-  vtp << "        <DataArray type=\"Int32\" Name=\"particle_id\" "
-         "NumberOfComponents=\"1\" format=\"ascii\">\n";
-  for (int p = 0; p < num_particles; ++p) {
-    for (size_t s = 0; s < paths[p].size(); ++s) {
-      vtp << "          " << p << "\n";
-    }
-  }
-  vtp << "        </DataArray>\n";
-
-  // step_index — position index within the particle's path
-  vtp << "        <DataArray type=\"Int32\" Name=\"step_index\" "
-         "NumberOfComponents=\"1\" format=\"ascii\">\n";
-  for (int p = 0; p < num_particles; ++p) {
-    for (size_t s = 0; s < paths[p].size(); ++s) {
-      vtp << "          " << static_cast<int>(s) << "\n";
-    }
-  }
-  vtp << "        </DataArray>\n";
-
-  vtp << "      </PointData>\n";
-
-  // --- Lines (connectivity + offsets) ---
-  //
-  // connectivity: flat list of point indices forming each polyline.
-  //   For particle 0 with S points: 0, 1, 2, ..., S-1
-  //   For particle 1: S, S+1, S+2, ...
-  //
-  // offsets: cumulative point count at the end of each polyline.
-  //   S, S + len(particle_1), ...
-  vtp << "      <Lines>\n";
-
-  vtp << "        <DataArray type=\"Int64\" Name=\"connectivity\" "
-         "NumberOfComponents=\"1\" format=\"ascii\">\n";
-  int64_t point_id = 0;
-  for (const auto &path : paths) {
-    for (size_t s = 0; s < path.size(); ++s) {
-      vtp << "          " << point_id + static_cast<int64_t>(s) << "\n";
-    }
-    point_id += static_cast<int64_t>(path.size());
-  }
-  vtp << "        </DataArray>\n";
-
-  vtp << "        <DataArray type=\"Int64\" Name=\"offsets\" "
-         "NumberOfComponents=\"1\" format=\"ascii\">\n";
-  int64_t offset = 0;
-  for (const auto &path : paths) {
-    offset += static_cast<int64_t>(path.size());
-    vtp << "          " << offset << "\n";
-  }
-  vtp << "        </DataArray>\n";
-
-  vtp << "      </Lines>\n";
-
-  // --- Close ---
-  vtp << "    </Piece>\n";
-  vtp << "  </PolyData>\n";
-  vtp << "</VTKFile>\n";
-
-  vtp.close();
-
-  printf("[INFO] Wrote particle paths VTP: %s  "
-         "(%d particles, %ld total points, %ld polylines)\n",
-         filename.c_str(), num_particles, (long)total_points,
-         (long)num_particles);
-}
-
-// Convenience overload: builds paths from flattened position arrays.
-//
-// Each step_positions vector holds kNumPtcls * 3 doubles (x0,y0,z0, x1,y1,z1,
-// ...). The first argument is the initial position; subsequent arguments are
-// destinations after each move.
-//
-// Usage:
-//   build_and_write_paths_vtp("paths.vtp", kNumPtcls, kInitPos,
-//                              kDest1, kDest2, kDest3);
-template <typename... DestVectors>
-void build_and_write_paths_vtp(const std::string &filename, int num_particles,
-                               const std::vector<double> &start,
-                               const DestVectors &...dests) {
-  // Collect all flattened arrays into a list
-  std::vector<const std::vector<double> *> steps = {&start, &dests...};
-
-  // Build per-particle paths
-  std::vector<std::vector<std::array<double, 3>>> paths(num_particles);
-  for (int p = 0; p < num_particles; ++p) {
-    paths[p].reserve(steps.size());
-    for (const auto *step : steps) {
-      paths[p].push_back(
-          {{(*step)[p * 3 + 0], (*step)[p * 3 + 1], (*step)[p * 3 + 2]}});
-    }
-  }
-
-  write_particle_paths_vtp(filename, paths);
-}
-
 // ===========================================================================
 // Single integration test — all PUMI-Tally capabilities sequentially
 // ===========================================================================
@@ -319,9 +155,6 @@ TEST_CASE("Test PUMI-Tally Multi-Dimensional Tally API", "[integration]") {
     REQUIRE(pumi_tally->position_dev_buffer.size() == kNumPtcls * 3);
     REQUIRE(pumi_tally->flying_dev_buffer.size() == kNumPtcls);
     REQUIRE(pumi_tally->weights_dev_buffer.size() == kNumPtcls);
-
-    printf("Writing mesh VTK file for visual verification in mesh.vtk\n");
-    Omega_h::vtk::write_parallel("mesh.vtk", &pumi_tally->full_mesh, 3);
 
     printf("[PASS] Step 1: Mesh and particle structure verified\n");
   }
@@ -595,16 +428,39 @@ TEST_CASE("Test PUMI-Tally Multi-Dimensional Tally API", "[integration]") {
   }
 
   // ================================================================
-  // Step 7 — Reflective boundary condition (feature verification)
+  // Step 7 — Reflective boundary condition with particle reflection
   //
-  // Enables reflective BC and verifies the internal state is set.
-  // NOTE: The actual particle reflection with MoveToNextLocation is
-  // not exercised here due to a pre-existing issue where boundary
-  // normals are computed on full_mesh but looked up on the partitioned
-  // picparts mesh.  The feature registration itself is tested.
+  // Reflects the remaining displacement (dest - inter_point), matching
+  // OpenMC's behavior where the particle's direction of travel is
+  // reflected and the remaining path length is conserved.
+  //
+  //   P0: (0.90,0.90,0.90) → (1.10,1.10,1.10)  flying=1 (all inside)
+  //   P1: (1.70,0.90,0.90) → (2.10,0.90,0.90)  flying=1 (x>2, reflects)
+  //   P2: (0.90,1.70,0.90) → (0.90,1.70,0.90)  flying=0 (stays)
+  //   P3: (0.90,0.90,1.70) → (0.90,1.30,2.10)  flying=1 (z>2, reflects)
+  //
+  // Hand-calc tally (incident = dest - inter_point):
+  //   P0:  |(1.10,1.10,1.10)-(0.90,0.90,0.90)| = √(3·0.04) ≈ 0.346410
+  //   P1:  to boundary (2.00,0.90,0.90) → 0.30
+  //        incident=(0.10,0,0), n=(-1,0,0) → reflected=(-0.10,0,0)
+  //        new dest=(1.90,0.90,0.90), reflected track=0.10  total 0.40
+  //   P2:  flying=0 → 0.0
+  //   P3:  dir=(0,0.40,0.40), |dir|=0.4√2, hits z=2 at t=0.75
+  //        intersection (0.90,1.20,2.00), track to boundary = 0.3√2
+  //        incident=(0,0.10,0.10), n=(0,0,-1) → reflected=(0,0.10,-0.10)
+  //        new dest=(0.90,1.30,1.90), reflected track = 0.1√2
+  //        P3 total = 0.4√2 ≈ 0.565685
+  //   Total: 0.2·√3 + 0.4 + 0.4·√2 ≈ 1.312096
+  //
+  // Expected positions after reflection:
+  //   P0: (1.10, 1.10, 1.10)   P1: (1.90, 0.90, 0.90)
+  //   P2: (0.90, 1.70, 0.90)   P3: (0.90, 1.30, 1.90)
   // ================================================================
-  printf("\n===== Step 7: Reflective boundary condition (feature check) =====\n");
+  printf("\n===== Step 7: Reflective boundary condition =====\n");
   {
+    const double expected_total_flux =
+        0.2 * std::sqrt(3.0) + 0.4 + 0.4 * std::sqrt(2.0);
+
     auto pumi_tally = std::make_unique<pumitally::PumiTallyImpl>(
         kMeshFilename, kNumPtcls, argc, argv);
 
@@ -612,34 +468,75 @@ TEST_CASE("Test PUMI-Tally Multi-Dimensional Tally API", "[integration]") {
     std::vector<unsigned int> bins(kNumPtcls, 0);
     pumi_tally->UpdateFilterBins(bins);
 
-    // Call the feature — this computes boundary normals on full_mesh
+    // Enable reflective boundary condition before the move
     pumi_tally->SetReflectiveBoundaryCondition();
 
     const auto &h = pumi_tally->p_pumi_particle_at_elem_boundary_handler;
     REQUIRE(h->boundary_condition ==
             pumitally::ParticleAtElemBoundary::BoundaryCondition::REFLECTIVE);
 
-    // Verify normals tag was added to full_mesh
-    // (tag is: Omega_h::FACE, "normals", 3 doubles per face)
-    const auto nfaces = pumi_tally->full_mesh.nfaces();
-    REQUIRE(nfaces > 0);
-    // The tag exists on full_mesh — verify by checking it doesn't throw
-    bool has_normals = pumi_tally->full_mesh.has_tag(
-        Omega_h::FACE, "normals");
-    REQUIRE(has_normals == true);
+    // Start from kDest3 positions (after three previous moves)
+    pumi_tally->CopyInitialPositionToBuffer(
+        kDest3.data(), static_cast<Omega_h::LO>(kDest3.size()));
 
-    printf("[PASS] Step 7: Reflective BC enabled, boundary normals computed "
-           "on %d faces\n",
-           nfaces);
+    // Move 4 destinations: two particles cross domain boundaries
+    // clang-format off
+    std::vector<double> kDest4 = {
+        1.10, 1.10, 1.10,  // P0: inside domain, flying=1
+        2.10, 0.90, 0.90,  // P1: x>2, flying=1 (reflects at x=2)
+        0.90, 1.70, 0.90,  // P2: stays, flying=0
+        0.90, 1.30, 2.10   // P3: z>2, flying=1 (reflects at z=2)
+    };
+    // clang-format on
+    std::vector<int8_t> flying4 = {1, 1, 0, 1};
+    std::vector<double> weights4(kNumPtcls, 1.0);
+    pumi_tally->MoveToNextLocation(
+        kDest3.data(), kDest4.data(), flying4.data(), weights4.data(),
+        static_cast<int64_t>(kDest4.size()));
+
+    require_valid_elements(*pumi_tally, "Step 7");
+
+    // Expected positions after reflection (OpenMC-style: remaining displacement):
+    //   P1: intersection (2.00,0.90,0.90), incident=dest-inter=(0.10,0,0)
+    //       n=(-1,0,0) → reflected=(-0.10,0,0)
+    //       new dest = (2.00,0.90,0.90)+(-0.10,0,0) = (1.90,0.90,0.90)
+    //   P3: intersection (0.90,1.20,2.00), incident=dest-inter=(0,0.10,0.10)
+    //       n=(0,0,-1) → reflected=(0,0.10,-0.10)
+    //       new dest = (0.90,1.20,2.00)+(0,0.10,-0.10) = (0.90,1.30,1.90)
+    // clang-format off
+    std::vector<double> kExpectedPos = {
+        1.10, 1.10, 1.10,  // P0
+        1.90, 0.90, 0.90,  // P1 — reflected
+        0.90, 1.70, 0.90,  // P2 — stayed
+        0.90, 1.30, 1.90   // P3 — reflected
+    };
+    // clang-format on
+    require_positions_match(pumi_tally->pumipic_ptcls.get(), kExpectedPos,
+                            "Step 7");
+
+    // Verify total flux matches hand calculation
+    auto tallies_host =
+        Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace(),
+                                            h->element_tallies);
+    double total_flux = 0.0;
+    for (size_t i = 0; i < tallies_host.size(); ++i)
+      total_flux += tallies_host(i);
+    printf("[INFO] Step 7 total flux: %.6f (expected ~%.6f)\n",
+           total_flux, expected_total_flux);
+    REQUIRE_THAT(total_flux,
+                 Catch::Matchers::WithinAbs(expected_total_flux, 1e-6));
+
+    printf("[PASS] Step 7: Reflective BC — particles reflected, tally "
+           "correct\n");
   }
 
   // ================================================================
-  // Step 8 — Full workflow: construct → tally → move → write VTK
+  // Step 8 — Full workflow: construct → tally → move → write Tallies
   //
   // Exercises the complete lifecycle with different start positions,
-  // element + node tallies, multiple moves, and VTK output.
+  // element + node tallies, multiple moves, and Tallies output.
   // ================================================================
-  printf("\n===== Step 8: Full workflow — tally, move, write VTK =====\n");
+  printf("\n===== Step 8: Full workflow — tally, move, write Tallies =====\n");
   {
     auto pumi_tally = std::make_unique<pumitally::PumiTallyImpl>(
         kMeshFilename, kNumPtcls, argc, argv);
@@ -681,10 +578,6 @@ TEST_CASE("Test PUMI-Tally Multi-Dimensional Tally API", "[integration]") {
         static_cast<int64_t>(step2.size()));
 
     require_valid_elements(*pumi_tally, "Step 8");
-
-    // Write particle paths to VTP for visual verification in ParaView
-    build_and_write_paths_vtp("particle_paths_full_workflow.vtp",
-                              kNumPtcls, start, step1, step2);
 
     // Write tally results to VTK
     pumi_tally->WriteTallyResults();
