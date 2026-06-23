@@ -37,7 +37,7 @@ void PumiTally::CopyInitialPosition(double *init_particle_positions,
 void PumiTally::MoveToNextLocation(double *particle_origin,
                                    double *particle_destinations,
                                    int8_t *flying, double *weights,
-                                   const std::int32_t size) const {
+                                   const int64_t size) const {
   const auto start_time = std::chrono::steady_clock::now();
 
   pimpl_->MoveToNextLocation(particle_origin, particle_destinations, flying,
@@ -57,6 +57,24 @@ void PumiTally::WriteTallyResults() const {
       std::chrono::steady_clock::now() - start_time;
   pimpl_->tally_times.vtk_file_write_time += elapsed_seconds.count();
   pimpl_->tally_times.PrintTimes();
+}
+
+void PumiTally::AddElementTally(
+    std::vector<unsigned int> number_of_non_spatial_filter_bins) {
+  pimpl_->AddElementTally(number_of_non_spatial_filter_bins);
+}
+
+void PumiTally::AddNodeTally(
+    std::vector<unsigned int> number_of_non_spatial_filter_bins) {
+  pimpl_->AddNodeTally(number_of_non_spatial_filter_bins);
+}
+
+void PumiTally::UpdateFilterBins(std::vector<unsigned int> bins) {
+  pimpl_->UpdateFilterBins(bins);
+}
+
+void PumiTally::SetReflectiveBoundaryCondition() {
+  pimpl_->SetReflectiveBoundaryCondition();
 }
 
 } // namespace pumitally

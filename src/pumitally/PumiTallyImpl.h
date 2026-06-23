@@ -10,6 +10,8 @@
 #include <pumipic_library.hpp>
 #include <pumipic_mesh.hpp>
 
+#include <vector>
+
 namespace pumitally {
 
 Omega_h::Reals GetCentroids(Omega_h::Mesh &mesh, bool add_tag = true);
@@ -52,13 +54,38 @@ using PPPS = pumipic::ParticleStructure<PPParticle>; //!< PUMI-PiC Particle DS
 using PPExeSpace =
     Kokkos::DefaultExecutionSpace; //!< PUMI-PiC Default Execution Space
 
+/**
+ * @brief Specification for a set of non-spatial tally filters
+ * @details Stores the filter bin counts. The number of filters is derived
+ * from the size of bins_per_filter.
+ */
+struct TallySpec {
+  std::vector<uint> bins_per_filter;      //!< Number of bins per filter
+  uint total_filter_bins = 1;             //!< Product of bins_per_filter
+  bool is_initialized = false;            //!< Whether this spec is valid
+
+  TallySpec() = default;
+
+  TallySpec(const std::vector<uint> &bins)
+      : bins_per_filter(bins), is_initialized(true) {
+    total_filter_bins = 1;
+    for (auto b : bins_per_filter) {
+      total_filter_bins *= b;
+    }
+  }
+
+  uint GetNumFilters() const { return static_cast<uint>(bins_per_filter.size()); }
+};
+
 struct ParticleAtElemBoundary {
   /**
    * Allocates tally and other arrays
    * @param num_elements Number of mesh elements
+   * @param num_vertices Number of mesh vertices (for node tallies)
    * @param capacity PUMI-PiC Particle DS capacity
    */
-  ParticleAtElemBoundary(Omega_h::LO num_elements, Omega_h::LO capacity);
+  ParticleAtElemBoundary(Omega_h::LO num_elements, Omega_h::LO num_vertices,
+                         Omega_h::LO capacity);
 
   /**
    * @brief This operator is called by the ParticleTracer to do user defined
@@ -108,15 +135,16 @@ struct ParticleAtElemBoundary {
   void UpdatePreviousXPoints(PPPS *ptcls) const;
 
   /**
-   * Calculate track-length estimated flux
+   * Calculate track-length estimated tally contributions
    * @param ptcls PUMI-PiC Particle DS
    * @param xpoints Current intersection points (flat: x0,y0,z0,x1,y1,z1,...)
    * @param elem_ids Current element ID
    * @param ptcl_done If particle tracking is done for this step
    *
    * @details
-   * Calculates the tracks segment length inside the current element and
-   * it is multiplied with the particle weight before accumulating in the tally
+   * Calculates the track segment length inside the current element and
+   * multiplies it with the particle weight before accumulating into the
+   * multi-dimensional tally arrays.
    *
    * @see operator()
    */
@@ -125,21 +153,15 @@ struct ParticleAtElemBoundary {
                     const Omega_h::Write<Omega_h::LO> &ptcl_done) const;
 
   /**
-   * Normalize the flux with volume and write it in a vTK file
-   * @param full_mesh Omega_h mesh to write the flux result on
+   * Write tally results to a VTK file
+   * @param full_mesh Omega_h mesh to write the tally results on
    * @param filename VTK file name
    *
-   * @see normalizeFlux
+   * @details Computes element volumes, attaches them as a tag, and writes
+   * multi-dimensional element and node tally arrays to the mesh.
    */
   void FinalizeTallies(Omega_h::Mesh &full_mesh,
                        const std::string &filename) const;
-
-  /**
-   * Normalize flux with element volumes and number of particles
-   * @param mesh Omega_h mesh object
-   * @return Omega_h::Reals Normalized flux array
-   */
-  Omega_h::Reals NormalizeFlux(Omega_h::Mesh &mesh) const;
 
   /**
    * Mark the tracking step as is_initial_track step
@@ -148,9 +170,106 @@ struct ParticleAtElemBoundary {
    */
   void MarkAsInitial(bool is_initial);
 
-  bool is_initial_track; //!< in is_initial_track run, flux is not tallied
-  Omega_h::Write<Omega_h::Real> flux;        //!< Flux tally array
+  /**
+   * @brief Register an element-based multi-dimensional tally (call once)
+   * @param number_of_non_spatial_filter_bins Number of bins per filter
+   *        (e.g., [2, 4] for 2 energy bins and 4 polar angle bins).
+   *        The number of filters is inferred from the vector size.
+   */
+  void AddElementTally(
+      const std::vector<uint> &number_of_non_spatial_filter_bins);
+
+  /**
+   * @brief Register a node-based (vertex) multi-dimensional tally (call once)
+   * @param number_of_non_spatial_filter_bins Number of bins per filter.
+   *        The number of filters is inferred from the vector size.
+   */
+  void AddNodeTally(const std::vector<uint> &number_of_non_spatial_filter_bins);
+
+  // --- New: Filter bin management ---
+
+  /**
+   * @brief Set per-particle filter bin assignments for the current step
+   * @param bins Flat host array: [pid * n_filters + dim] = bin_index
+   *        Size must be capacity * n_filters where n_filters =
+   *        bins_per_filter.size() from the registered tally.
+   */
+  void SetFilterBins(const std::vector<uint> &bins);
+
+  // --- New: Boundary condition ---
+
+  /**
+   * @brief Boundary condition type
+   */
+  enum class BoundaryCondition {
+    VACUUM,     // Particle leaves the domain, no reflection
+    REFLECTIVE  // Specular reflection at domain boundaries
+  };
+
+  /**
+   * @brief Set the boundary condition for particle-boundary interactions
+   * @param bc The desired boundary condition
+   * @param mesh Mesh to compute normals on if reflective (may be modified)
+   */
+  void SetBoundaryCondition(BoundaryCondition bc, Omega_h::Mesh &mesh);
+
+  // --- New: Accessors for tally data ---
+
+  /**
+   * @brief Check whether any multi-dimensional tallies have been registered
+   */
+  bool HasMultiDimTally() const {
+    return element_tally_spec.is_initialized ||
+           node_tally_spec.is_initialized;
+  }
+
+  /**
+   * @brief Get the registered filter specification
+   */
+  const TallySpec &GetTallySpec() const {
+    if (element_tally_spec.is_initialized) {
+      return element_tally_spec;
+    }
+    return node_tally_spec;
+  }
+
+  bool is_initial_track; //!< in is_initial_track run, tally is not accumulated
+  Omega_h::LO nelem;                     //!< Number of mesh elements
+
+  // --- Multi-dimensional tally arrays (flat Kokkos Views) ---
+  // Logical layout: [spatial, bins[0], bins[1], ...] stored row-major flat.
+  // Linear index: spatial_id * total_bins + flat_filter_idx
+  TallySpec element_tally_spec;               //!< Spec for element tally
+  TallySpec node_tally_spec;                  //!< Spec for node tally
+  Kokkos::View<double *, PPExeSpace> element_tallies; //!< Flat: nelem * total_bins
+  Kokkos::View<double *, PPExeSpace> node_tallies;    //!< Flat: nvert * total_bins
+  bool multi_dim_tallies_active;              //!< Whether multi-D tallies are active
+
+  // Once-only guards
+  bool element_tally_called = false;
+  bool node_tally_called = false;
+
   Omega_h::Write<Omega_h::Real> prev_xpoint; //!< Previous intersection point
+
+  // --- Per-particle filter bin device array ---
+  // Size: [capacity * n_filters], layout: [pid * n_filters + dim] = bin_index
+  Omega_h::Write<Omega_h::LO> filter_bins_dev;
+  uint active_n_filters;                      //!< Current number of filters in use
+
+  // --- Device-accessible filter metadata (for use in device lambdas) ---
+  // bins_per_filter[f] stored on device so EvaluateFlux can compute flat indices
+  Omega_h::Write<Omega_h::LO> bins_per_filter_dev;
+  // Precomputed strides: stride[f] = prod(bins[f+1..n-1]), last dimension = 1
+  Omega_h::Write<Omega_h::LO> filter_strides_dev;
+  // Total number of filter bin combinations (product of all bins_per_filter)
+  Omega_h::Write<Omega_h::LO> total_filter_bins_dev;
+
+  // --- Node tally support ---
+  Omega_h::LO num_vertices;                   //!< Number of mesh vertices
+  Omega_h::Read<Omega_h::LO> elem2vert;       //!< Element-to-vertex connectivity
+
+  // --- Boundary condition ---
+  BoundaryCondition boundary_condition;       //!< Active boundary condition
 
   // temporary gabe merging variables
   // these will be removed after the operator functinality is merged to both
@@ -222,7 +341,7 @@ struct PumiTallyImpl {
 
   void MoveToNextLocation(double *particle_origin,
                           double *particle_destinations, int8_t *flying,
-                          double *weights, Omega_h::LO size);
+                          double *weights, int64_t size);
 
   void WriteTallyResults();
 
@@ -233,6 +352,30 @@ struct PumiTallyImpl {
   void CopyFlyingFlagToBuffer(int8_t *flying) const;
 
   void CopyWeightsToBuffer(double *weights) const;
+
+  // --- New: Multi-dimensional tally API methods ---
+
+  /**
+   * @brief Register an element-based multi-dimensional tally (call once)
+   */
+  void AddElementTally(
+      const std::vector<uint> &number_of_non_spatial_filter_bins);
+
+  /**
+   * @brief Register a node-based (vertex) multi-dimensional tally (call once)
+   */
+  void AddNodeTally(const std::vector<uint> &number_of_non_spatial_filter_bins);
+
+  /**
+   * @brief Set per-particle filter bin assignments for the current step
+   * @param bins size = nparticles * n_filters
+   */
+  void UpdateFilterBins(const std::vector<uint> &bins);
+
+  /**
+   * @brief Set the boundary condition for particle-boundary interactions
+   */
+  void SetReflectiveBoundaryCondition();
 };
 } // namespace pumitally
 

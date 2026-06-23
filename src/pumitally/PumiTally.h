@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 /**
  * @brief PUMI-Tally Namespace
@@ -75,7 +76,7 @@ public:
    * locations
    * @param flying If the particles are flying in this step 1-flying 0-stopped
    * @param weights Weight of particle (multiplied when tallying), usually [0,1]
-   * @param size Number of particles
+   * @param size Number of particles (use int64_t for large particle counts)
    *
    * @details
    * It first moves the particles to the origin locations. This step is
@@ -86,13 +87,62 @@ public:
    */
   void MoveToNextLocation(double *particle_origin,
                           double *particle_destinations, int8_t *flying,
-                          double *weights, int32_t size) const;
+                          double *weights, int64_t size) const;
 
   /**
    * @brief Write the mesh tally to a VTK file
    * @details Normalized by element volumes and total number of particles
    */
   void WriteTallyResults() const;
+
+  /**
+   * @brief Register an element-based multi-dimensional tally (call once)
+   * @param number_of_non_spatial_filter_bins Number of bins per filter
+   *        (e.g., [2, 4] for 2 energy bins and 4 polar angle bins).
+   *        The number of filters is inferred from the vector size.
+   *
+   * @details The resulting tally array is a flat Kokkos View of size
+   *   nelem × bins[0] × bins[1] × ...
+   * For example with [2, 4]: nelem × 8 entries.
+   * This method can only be called once.
+   */
+  void AddElementTally(
+      std::vector<unsigned int> number_of_non_spatial_filter_bins);
+
+  /**
+   * @brief Register a node-based (vertex) multi-dimensional tally (call once)
+   * @param number_of_non_spatial_filter_bins Number of bins per filter.
+   *        The number of filters is inferred from the vector size.
+   *
+   * @details The resulting tally array is a flat Kokkos View of size
+   *   nvertices × bins[0] × bins[1] × ...
+   * This method can only be called once.
+   */
+  void AddNodeTally(
+      std::vector<unsigned int> number_of_non_spatial_filter_bins);
+
+  /**
+   * @brief Set per-particle filter bin assignments for the current step
+   * @param bins Flat array of size nparticles * n_filters.
+   *        For particle p, bins[p * n_filters + f] is the bin index for
+   *        filter dimension f. Must be called before MoveToNextLocation.
+   *
+   * @details
+   * Example with [2, 4] filter bins (n_filters = 2):
+   *   bins size = nparticles * 2
+   *   bins[pid * 2 + 0] = energy bin (0 or 1)
+   *   bins[pid * 2 + 1] = angle bin (0, 1, 2, or 3)
+   */
+  void UpdateFilterBins(std::vector<unsigned int> bins);
+
+  /**
+   * @brief (TODO: TEMPORARY) Enable specular (equal-angle) reflection at domain boundaries
+   * @details When a particle hits the outer boundary, its direction is
+   * reflected using: reflected = incident - 2·dot(incident,normal)·normal.
+   * The particle stays in the same element and continues with the reflected
+   * direction. By default, vacuum boundary condition is used (particle leaves).
+   */
+  void SetReflectiveBoundaryCondition();
 
   /**
    * @brief PUMI-Tally Destructor
