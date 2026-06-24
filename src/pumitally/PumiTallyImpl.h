@@ -9,6 +9,7 @@
 #include <pumipic_adjacency.tpp>
 #include <pumipic_library.hpp>
 #include <pumipic_mesh.hpp>
+#include <Kokkos_DynRankView.hpp>
 
 #include <vector>
 
@@ -236,13 +237,13 @@ struct ParticleAtElemBoundary {
   bool is_initial_track; //!< in is_initial_track run, tally is not accumulated
   Omega_h::LO nelem;                     //!< Number of mesh elements
 
-  // --- Multi-dimensional tally arrays (flat Kokkos Views) ---
-  // Logical layout: [spatial, bins[0], bins[1], ...] stored row-major flat.
-  // Linear index: spatial_id * total_bins + flat_filter_idx
+  // --- Multi-dimensional tally arrays (DynRankView with runtime rank) ---
+  // Layout: [spatial, bins[0], bins[1], ...] stored row-major.
+  // Rank = 1 (spatial) + n_filters. Strides accessible via stride(i).
   TallySpec element_tally_spec;               //!< Spec for element tally
   TallySpec node_tally_spec;                  //!< Spec for node tally
-  Kokkos::View<double *, PPExeSpace> element_tallies; //!< Flat: nelem * total_bins
-  Kokkos::View<double *, PPExeSpace> node_tallies;    //!< Flat: nvert * total_bins
+  Kokkos::DynRankView<double, PPExeSpace> element_tallies; //!< Rank = 1+n_filters
+  Kokkos::DynRankView<double, PPExeSpace> node_tallies;    //!< Rank = 1+n_filters
   bool multi_dim_tallies_active;              //!< Whether multi-D tallies are active
 
   // Once-only guards
@@ -255,14 +256,6 @@ struct ParticleAtElemBoundary {
   // Size: [capacity * n_filters], layout: [pid * n_filters + dim] = bin_index
   Omega_h::Write<Omega_h::LO> filter_bins_dev;
   uint active_n_filters;                      //!< Current number of filters in use
-
-  // --- Device-accessible filter metadata (for use in device lambdas) ---
-  // bins_per_filter[f] stored on device so EvaluateFlux can compute flat indices
-  Omega_h::Write<Omega_h::LO> bins_per_filter_dev;
-  // Precomputed strides: stride[f] = prod(bins[f+1..n-1]), last dimension = 1
-  Omega_h::Write<Omega_h::LO> filter_strides_dev;
-  // Total number of filter bin combinations (product of all bins_per_filter)
-  Omega_h::Write<Omega_h::LO> total_filter_bins_dev;
 
   // --- Node tally support ---
   Omega_h::LO num_vertices;                   //!< Number of mesh vertices

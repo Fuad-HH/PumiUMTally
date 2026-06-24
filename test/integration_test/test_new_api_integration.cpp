@@ -323,31 +323,24 @@ TEST_CASE("Test PUMI-Tally Multi-Dimensional Tally API", "[integration]") {
     REQUIRE_THAT(total_flux, Catch::Matchers::WithinAbs(expected_total_flux, 1e-6));
 
     // Check if the tallies are in correct bins
-    // Total in angle bin 0 and 2 should be half of the total flux
-    // and they are equal
-    // first create the representative multi-dimensional tally array on the host (kokkos array)
-    // nelem * 2 * 3 = 36 entries
+    // Total in energy bin 0, angle bin 0 and energy bin 1, angle bin 2
+    // should each be half of the total flux and they should be equal.
+    // tallies_host is DynRankView<double, HostSpace> with rank 3 (nelem, 2, 3)
     const auto nelem = pumi_tally->full_mesh.nelems();
-    Kokkos::View<double ***, Kokkos::HostSpace> md_tally_array("md_tally_array", nelem, 2, 3);
-    // now copy tallies_host to md_tally_array
-    // tallies_host is flat: [e * total_bins + energy * 3 + angle]
-    const size_t total_bins = 2u * 3u;
-    for (size_t i = 0; i < tallies_host.size(); ++i)
-      md_tally_array(i / total_bins, (i % total_bins) / 3, (i % total_bins) % 3) = tallies_host(i);
-
-    // print the md_tally_array like a table
-    printf("md_tally_array:\n");
-    printf("\t\t\t  Angle 0  Angle 1  Angle 2  \t\t  Angle 0  Angle 1  Angle 2  \n");
-    for (size_t i = 0; i < nelem; ++i) {
-      printf("Element %d:\t", i);
-      for (size_t j = 0; j < 2; ++j) {
-        printf("Energy %d: ", j);
-        for (size_t k = 0; k < 3; ++k) {
-          printf("%f ", md_tally_array(i, j, k));
+    {
+      printf("Multi-dimensional tally (energy x angle):\n");
+      printf("\t\t\t  Angle 0  Angle 1  Angle 2  \t\t  Angle 0  Angle 1  Angle 2  \n");
+      for (size_t i = 0; i < nelem; ++i) {
+        printf("Element %zu:\t", i);
+        for (size_t j = 0; j < 2; ++j) {
+          printf("Energy %zu: ", j);
+          for (size_t k = 0; k < 3; ++k) {
+            printf("%f ", tallies_host(i, j, k));
+          }
+          printf("\t");
         }
-        printf("\t");
+        printf("\n");
       }
-      printf("\n");
     }
     printf("\n");
     printf("total flux: %f (expected ~1.3856)\n", total_flux);
@@ -355,14 +348,14 @@ TEST_CASE("Test PUMI-Tally Multi-Dimensional Tally API", "[integration]") {
     // Check flux in bins:
     // 1. (all, 0, 0) = 1 x 4 x sqrt(3*0.1*0.1) ≈ 0.6928
     double total_all_0_0 = 0.0;
-    for (size_t i = 0; i < nelem; ++i) {
-      total_all_0_0 += md_tally_array(i, 0, 0);
+    for (size_t e = 0; e < nelem; ++e) {
+      total_all_0_0 += tallies_host(e, 0, 0);
     }
     REQUIRE_THAT(total_all_0_0, Catch::Matchers::WithinAbs(expected_flux_all_0_0, 1e-6));
     // 2. (all, 1, 2) = 1 x 4 x sqrt(3*0.1*0.1) ≈ 0.6928
     double total_all_1_2 = 0.0;
-    for (size_t i = 0; i < nelem; ++i) {
-      total_all_1_2 += md_tally_array(i, 1, 2);
+    for (size_t e = 0; e < nelem; ++e) {
+      total_all_1_2 += tallies_host(e, 1, 2);
     }
     REQUIRE_THAT(total_all_1_2, Catch::Matchers::WithinAbs(expected_flux_all_1_2, 1e-6));
 

@@ -667,45 +667,26 @@ void ApplyVacuumBC(const Omega_h::Mesh &mesh, PPPS *ptcls,
 }
 
 // ==========================================================================
-// Helper: populate device-accessible filter strides and bins_per_filter
+// Helper: allocate a DynRankView with runtime rank via dispatch
 // ==========================================================================
 namespace {
-void populate_filter_device_arrays(
-    const std::vector<uint> &bins_per_filter,
-    Omega_h::Write<Omega_h::LO> &bins_dev,
-    Omega_h::Write<Omega_h::LO> &strides_dev,
-    Omega_h::Write<Omega_h::LO> &total_dev,
-    uint total_filter_bins) {
-
-  uint nf = static_cast<uint>(bins_per_filter.size());
-  bins_dev = Omega_h::Write<Omega_h::LO>(nf, 0, "bins_per_filter_dev");
-  strides_dev = Omega_h::Write<Omega_h::LO>(nf, 0, "filter_strides_dev");
-
-  auto bins_h = Kokkos::create_mirror_view(
-      Kokkos::View<Omega_h::LO *, Kokkos::HostSpace>(
-          const_cast<Omega_h::LO *>(bins_dev.data()), nf));
-  auto strides_h = Kokkos::create_mirror_view(
-      Kokkos::View<Omega_h::LO *, Kokkos::HostSpace>(
-          const_cast<Omega_h::LO *>(strides_dev.data()), nf));
-
-  uint stride = 1;
-  for (int f = static_cast<int>(nf) - 1; f >= 0; --f) {
-    bins_h[f] = static_cast<Omega_h::LO>(bins_per_filter[f]);
-    strides_h[f] = stride;
-    stride *= bins_per_filter[f];
+Kokkos::DynRankView<double, PPExeSpace>
+allocate_tally_view(const std::string &label, Omega_h::LO spatial_extent,
+                    const std::vector<uint> &bins) {
+  switch (bins.size()) {
+  case 1:
+    return Kokkos::DynRankView<double, PPExeSpace>(label, spatial_extent, bins[0]);
+  case 2:
+    return Kokkos::DynRankView<double, PPExeSpace>(label, spatial_extent, bins[0], bins[1]);
+  case 3:
+    return Kokkos::DynRankView<double, PPExeSpace>(label, spatial_extent, bins[0], bins[1], bins[2]);
+  case 4:
+    return Kokkos::DynRankView<double, PPExeSpace>(label, spatial_extent, bins[0], bins[1], bins[2], bins[3]);
+  default:
+    throw std::runtime_error(
+        "Unsupported number of filter dimensions: " +
+        std::to_string(bins.size()));
   }
-
-  Kokkos::deep_copy(
-      Kokkos::View<Omega_h::LO *, PPExeSpace>(
-          const_cast<Omega_h::LO *>(bins_dev.data()), nf),
-      bins_h);
-  Kokkos::deep_copy(
-      Kokkos::View<Omega_h::LO *, PPExeSpace>(
-          const_cast<Omega_h::LO *>(strides_dev.data()), nf),
-      strides_h);
-
-  total_dev = Omega_h::Write<Omega_h::LO>(1, total_filter_bins,
-                                          "total_filter_bins_dev");
 }
 } // namespace
 
@@ -735,16 +716,9 @@ void ParticleAtElemBoundary::AddElementTally(
   element_tally_spec =
       TallySpec(number_of_non_spatial_filter_bins);
 
-  size_t total_size =
-      static_cast<size_t>(nelem) * element_tally_spec.total_filter_bins;
-  element_tallies =
-      Kokkos::View<double *, PPExeSpace>("element_tallies", total_size);
+  element_tallies = allocate_tally_view(
+      "element_tallies", nelem, number_of_non_spatial_filter_bins);
   Kokkos::deep_copy(element_tallies, 0.0);
-
-  populate_filter_device_arrays(number_of_non_spatial_filter_bins,
-                                bins_per_filter_dev, filter_strides_dev,
-                                total_filter_bins_dev,
-                                element_tally_spec.total_filter_bins);
 
   active_n_filters = element_tally_spec.GetNumFilters();
   multi_dim_tallies_active = true;
@@ -765,16 +739,9 @@ void ParticleAtElemBoundary::AddNodeTally(
 
   node_tally_spec = TallySpec(number_of_non_spatial_filter_bins);
 
-  size_t total_size =
-      static_cast<size_t>(num_vertices) * node_tally_spec.total_filter_bins;
-  node_tallies =
-      Kokkos::View<double *, PPExeSpace>("node_tallies", total_size);
+  node_tallies = allocate_tally_view(
+      "node_tallies", num_vertices, number_of_non_spatial_filter_bins);
   Kokkos::deep_copy(node_tallies, 0.0);
-
-  populate_filter_device_arrays(number_of_non_spatial_filter_bins,
-                                bins_per_filter_dev, filter_strides_dev,
-                                total_filter_bins_dev,
-                                node_tally_spec.total_filter_bins);
 
   active_n_filters = node_tally_spec.GetNumFilters();
   multi_dim_tallies_active = true;
@@ -911,19 +878,15 @@ void ParticleAtElemBoundary::EvaluateFlux(
   const auto p_wgt = ptcls->get<4>();
   const auto &xpoints_l = xpoints;
 
-  // Multi-dimensional tally: get raw data pointers and metadata
+  // Multi-dimensional tally: capture DynRankViews (cheap handle copy)
   const bool has_elem = element_tally_spec.is_initialized;
   const bool has_node = node_tally_spec.is_initialized;
-  const auto elem_data = has_elem ? element_tallies.data() : nullptr;
-  const auto node_data = has_node ? node_tallies.data() : nullptr;
-  const uint elem_total = has_elem ? element_tally_spec.total_filter_bins : 0u;
-  const uint node_total = has_node ? node_tally_spec.total_filter_bins : 0u;
+  const auto elem_view = element_tallies;
+  const auto node_view = node_tallies;
 
   // Filter bins device array — size [capacity * n_filters]
   const auto filt_bins = filter_bins_dev;
   const uint n_filt = active_n_filters;
-  // Device-accessible filter strides
-  const auto filter_strides_dev_l = filter_strides_dev;
 
   // Element-to-vertex connectivity for node tallies (size: nelem*4 for tets)
   const auto e2v = elem2vert;
@@ -941,37 +904,91 @@ void ParticleAtElemBoundary::EvaluateFlux(
       const Omega_h::Real segment_length = Omega_h::norm(dest - orig);
       const Omega_h::Real contribution = segment_length * p_wgt(pid);
 
-      // Multi-dimensional tallies — compute flat filter index
-      if (has_elem || has_node) {
-        // Compute flat filter index: sum over f (bin[f] * stride[f])
-        Omega_h::LO flat_filt = 0;
-        for (uint f = 0; f < n_filt; ++f) {
-          Omega_h::LO bin_idx = filt_bins[pid * n_filt + f];
-          flat_filt += bin_idx * filter_strides_dev_l[f];
+      // Multi-dimensional tallies via DynRankView operator()
+      // rank = 1 (spatial) + n_filt; switch dispatches correct number of indices
+      if (has_elem) {
+        Omega_h::LO eid = elem_ids[pid];
+        switch (n_filt) {
+        case 1:
+          Kokkos::atomic_add(
+              &elem_view(eid, filt_bins[pid * n_filt + 0]),
+              contribution);
+          break;
+        case 2:
+          Kokkos::atomic_add(
+              &elem_view(eid, filt_bins[pid * n_filt + 0],
+                         filt_bins[pid * n_filt + 1]),
+              contribution);
+          break;
+        case 3:
+          Kokkos::atomic_add(
+              &elem_view(eid, filt_bins[pid * n_filt + 0],
+                         filt_bins[pid * n_filt + 1],
+                         filt_bins[pid * n_filt + 2]),
+              contribution);
+          break;
+        case 4:
+          Kokkos::atomic_add(
+              &elem_view(eid, filt_bins[pid * n_filt + 0],
+                         filt_bins[pid * n_filt + 1],
+                         filt_bins[pid * n_filt + 2],
+                         filt_bins[pid * n_filt + 3]),
+              contribution);
+          break;
+        default:
+          break;
         }
+      }
 
-        if (has_elem) {
-          Omega_h::LO elem_id = elem_ids[pid];
-          Omega_h::LO tally_idx = elem_id * elem_total + flat_filt;
-          Kokkos::atomic_add(&elem_data[tally_idx], contribution);
+      if (has_node) {
+        // Distribute to the 4 vertices of the tet element (equal split)
+        Omega_h::Real vert_contrib = contribution / 4.0;
+        Omega_h::LO eid = elem_ids[pid];
+        Omega_h::LO v0 = e2v[eid * 4 + 0];
+        Omega_h::LO v1 = e2v[eid * 4 + 1];
+        Omega_h::LO v2 = e2v[eid * 4 + 2];
+        Omega_h::LO v3 = e2v[eid * 4 + 3];
+        switch (n_filt) {
+        case 1: {
+          auto b0 = filt_bins[pid * n_filt + 0];
+          Kokkos::atomic_add(&node_view(v0, b0), vert_contrib);
+          Kokkos::atomic_add(&node_view(v1, b0), vert_contrib);
+          Kokkos::atomic_add(&node_view(v2, b0), vert_contrib);
+          Kokkos::atomic_add(&node_view(v3, b0), vert_contrib);
+          break;
         }
-
-        if (has_node) {
-          // Distribute to the 4 vertices of the tet element (equal split)
-          Omega_h::Real vert_contrib = contribution / 4.0;
-          Omega_h::LO eid = elem_ids[pid];
-          Omega_h::LO v0 = e2v[eid * 4 + 0];
-          Omega_h::LO v1 = e2v[eid * 4 + 1];
-          Omega_h::LO v2 = e2v[eid * 4 + 2];
-          Omega_h::LO v3 = e2v[eid * 4 + 3];
-          Kokkos::atomic_add(
-              &node_data[v0 * node_total + flat_filt], vert_contrib);
-          Kokkos::atomic_add(
-              &node_data[v1 * node_total + flat_filt], vert_contrib);
-          Kokkos::atomic_add(
-              &node_data[v2 * node_total + flat_filt], vert_contrib);
-          Kokkos::atomic_add(
-              &node_data[v3 * node_total + flat_filt], vert_contrib);
+        case 2: {
+          auto b0 = filt_bins[pid * n_filt + 0];
+          auto b1 = filt_bins[pid * n_filt + 1];
+          Kokkos::atomic_add(&node_view(v0, b0, b1), vert_contrib);
+          Kokkos::atomic_add(&node_view(v1, b0, b1), vert_contrib);
+          Kokkos::atomic_add(&node_view(v2, b0, b1), vert_contrib);
+          Kokkos::atomic_add(&node_view(v3, b0, b1), vert_contrib);
+          break;
+        }
+        case 3: {
+          auto b0 = filt_bins[pid * n_filt + 0];
+          auto b1 = filt_bins[pid * n_filt + 1];
+          auto b2 = filt_bins[pid * n_filt + 2];
+          Kokkos::atomic_add(&node_view(v0, b0, b1, b2), vert_contrib);
+          Kokkos::atomic_add(&node_view(v1, b0, b1, b2), vert_contrib);
+          Kokkos::atomic_add(&node_view(v2, b0, b1, b2), vert_contrib);
+          Kokkos::atomic_add(&node_view(v3, b0, b1, b2), vert_contrib);
+          break;
+        }
+        case 4: {
+          auto b0 = filt_bins[pid * n_filt + 0];
+          auto b1 = filt_bins[pid * n_filt + 1];
+          auto b2 = filt_bins[pid * n_filt + 2];
+          auto b3 = filt_bins[pid * n_filt + 3];
+          Kokkos::atomic_add(&node_view(v0, b0, b1, b2, b3), vert_contrib);
+          Kokkos::atomic_add(&node_view(v1, b0, b1, b2, b3), vert_contrib);
+          Kokkos::atomic_add(&node_view(v2, b0, b1, b2, b3), vert_contrib);
+          Kokkos::atomic_add(&node_view(v3, b0, b1, b2, b3), vert_contrib);
+          break;
+        }
+        default:
+          break;
         }
       }
     }
