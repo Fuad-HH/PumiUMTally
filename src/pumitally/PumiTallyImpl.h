@@ -162,7 +162,9 @@ struct ParticleAtElemBoundary {
    * multi-dimensional element and node tally arrays to the mesh.
    */
   void FinalizeTallies(Omega_h::Mesh &full_mesh,
-                       const std::string &filename) const;
+                       const std::string &filename,
+                       const std::vector<Omega_h::LO> &source_dist =
+                           {}) const;
 
   /**
    * Mark the tracking step as is_initial_track step
@@ -293,6 +295,7 @@ struct ParticleAtElemBoundary {
 struct PumiTallyImpl {
   Omega_h::LO num_particles = 1e5; //!< Number of Particles
   int source_region_id = -1;       //!< class_id for REGION source distribution
+  std::vector<Omega_h::LO> source_ptcls_per_elem; //!< Source distribution (particles per element)
   std::string oh_mesh_filename;    //!< Omega_h mesh file name
 
   Omega_h::Library oh_lib; //!< Omega_h Library (Holds MPI Comm)

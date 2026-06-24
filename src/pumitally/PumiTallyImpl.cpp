@@ -15,7 +15,8 @@
 
 namespace pumitally {
 std::unique_ptr<PPPS> CreateParticleDS(const Omega_h::Mesh &mesh,
-                                       pumipic::lid_t num_ptcls);
+                                       pumipic::lid_t num_ptcls,
+                                       std::vector<Omega_h::LO> *out_ptcls_per_elem = nullptr);
 
 void InitializeParticlesInElement0(Omega_h::Mesh &mesh, pumitally::PPPS *ptcls);
 void InitializeParticlesInRegion(Omega_h::Mesh &mesh, pumitally::PPPS *ptcls,
@@ -201,8 +202,8 @@ void PumiTallyImpl::MoveToNextLocation(double *particle_origin,
 }
 
 void PumiTallyImpl::WriteTallyResults() {
-  p_pumi_particle_at_elem_boundary_handler->FinalizeTallies(full_mesh,
-                                                            "fluxresult.vtk");
+  p_pumi_particle_at_elem_boundary_handler->FinalizeTallies(
+      full_mesh, "fluxresult.vtk", source_ptcls_per_elem);
 #ifdef PUMI_MEASURE_TIME
   Kokkos::fence();
 #endif
@@ -1073,7 +1074,8 @@ void ParticleAtElemBoundary::EvaluateFlux(
 // ==========================================================================
 
 void ParticleAtElemBoundary::FinalizeTallies(
-    Omega_h::Mesh &full_mesh, const std::string &filename) const {
+    Omega_h::Mesh &full_mesh, const std::string &filename,
+    const std::vector<Omega_h::LO> &source_dist) const {
   // 1. Compute and attach element volumes
   {
     const auto &el2n = full_mesh.ask_down(Omega_h::REGION, Omega_h::VERT).ab2b;
@@ -1089,6 +1091,23 @@ void ParticleAtElemBoundary::FinalizeTallies(
     };
     Omega_h::parallel_for(nelem, compute_volume, "compute element volumes");
     full_mesh.add_tag(Omega_h::REGION, "volume", 1, Omega_h::Reals(tet_volumes));
+  }
+
+  // 1b. Attach source distribution (particles per element) if available
+  if (!source_dist.empty()) {
+    OMEGA_H_CHECK_PRINTF(
+        source_dist.size() == static_cast<size_t>(nelem),
+        "Source distribution size (%zu) must match number of elements (%d)\n",
+        source_dist.size(), nelem);
+    // Convert from LO to Real so VTK can display it
+    Omega_h::HostWrite<Omega_h::Real> source_host(nelem, "source_host");
+    for (Omega_h::LO e = 0; e < nelem; ++e) {
+      source_host[e] = static_cast<Omega_h::Real>(source_dist[e]);
+    }
+    Omega_h::Write<Omega_h::Real> source_write(source_host);
+    full_mesh.add_tag(Omega_h::REGION, "source", 1,
+                      Omega_h::Reals(source_write));
+    printf("[INFO] Added source tag on REGION (particles per element)\n");
   }
 
   // 2. Multi-dimensional element tally: single tag with ncomps = total_filter_bins
@@ -1183,8 +1202,9 @@ bool PumiTallyImpl::SearchAndRebuild(const bool initial,
   return found_all;
 }
 
-std::unique_ptr<PPPS> CreateParticleDS(const Omega_h::Mesh &mesh,
-                                       pumipic::lid_t num_ptcls) {
+std::unique_ptr<PPPS> CreateParticleDS(
+    const Omega_h::Mesh &mesh, pumipic::lid_t num_ptcls,
+    std::vector<Omega_h::LO> *out_ptcls_per_elem) {
   Omega_h::Int ne = mesh.nelems();
   pumitally::PPPS::kkLidView ptcls_per_elem("ptcls_per_elem", ne);
   pumitally::PPPS::kkGidView element_gids("element_gids", ne);
@@ -1198,6 +1218,16 @@ std::unique_ptr<PPPS> CreateParticleDS(const Omega_h::Mesh &mesh,
       mesh.nelems(), OMEGA_H_LAMBDA(const Omega_h::LO id) {
         ptcls_per_elem[id] = (id == 0) ? num_ptcls : 0;
       });
+
+  // Save source distribution if requested
+  if (out_ptcls_per_elem) {
+    out_ptcls_per_elem->resize(ne);
+    auto ptcls_host = Kokkos::create_mirror_view(ptcls_per_elem);
+    Kokkos::deep_copy(ptcls_host, ptcls_per_elem);
+    for (Omega_h::LO i = 0; i < ne; ++i) {
+      (*out_ptcls_per_elem)[i] = ptcls_host(i);
+    }
+  }
 
 #ifdef PUMI_USE_KOKKOS_CUDA
   printf("PumiPIC Using GPU for simulation...\n");
@@ -1214,9 +1244,9 @@ std::unique_ptr<PPPS> CreateParticleDS(const Omega_h::Mesh &mesh,
   return ptcls;
 }
 
-std::unique_ptr<PPPS> CreateParticleDSForRegion(Omega_h::Mesh &mesh,
-                                                 pumipic::lid_t num_ptcls,
-                                                 int region_id) {
+std::unique_ptr<PPPS> CreateParticleDSForRegion(
+    Omega_h::Mesh &mesh, pumipic::lid_t num_ptcls, int region_id,
+    std::vector<Omega_h::LO> *out_ptcls_per_elem) {
   Omega_h::Int ne = mesh.nelems();
   pumitally::PPPS::kkLidView ptcls_per_elem("ptcls_per_elem", ne);
   pumitally::PPPS::kkGidView element_gids("element_gids", ne);
@@ -1313,6 +1343,16 @@ std::unique_ptr<PPPS> CreateParticleDSForRegion(Omega_h::Mesh &mesh,
                          region_id, static_cast<int>(num_ptcls));
   }
 
+  // Save source distribution if requested
+  if (out_ptcls_per_elem) {
+    out_ptcls_per_elem->resize(ne);
+    auto ptcls_host = Kokkos::create_mirror_view(ptcls_per_elem);
+    Kokkos::deep_copy(ptcls_host, ptcls_per_elem);
+    for (Omega_h::LO i = 0; i < ne; ++i) {
+      (*out_ptcls_per_elem)[i] = ptcls_host(i);
+    }
+  }
+
   printf("PumiPIC Using CPU for simulation...\n");
   policy =
       Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace>(10000, Kokkos::AUTO());
@@ -1402,7 +1442,7 @@ Omega_h::Mesh PumiTallyImpl::PartitionMesh() {
 }
 
 void PumiTallyImpl::InitializePUMIParticleStructure(Omega_h::Mesh &mesh) {
-  pumipic_ptcls = CreateParticleDS(mesh, num_particles);
+  pumipic_ptcls = CreateParticleDS(mesh, num_particles, &source_ptcls_per_elem);
   InitializeParticlesInElement0(mesh, pumipic_ptcls.get());
   p_pumi_particle_at_elem_boundary_handler =
       std::make_unique<pumitally::ParticleAtElemBoundary>(
@@ -1419,7 +1459,9 @@ void PumiTallyImpl::InitializePUMIParticleStructure(Omega_h::Mesh &mesh) {
 
 void PumiTallyImpl::InitializePUMIParticleStructureForRegion(
     Omega_h::Mesh &mesh, int region_id) {
-  pumipic_ptcls = CreateParticleDSForRegion(mesh, num_particles, region_id);
+  pumipic_ptcls =
+      CreateParticleDSForRegion(mesh, num_particles, region_id,
+                                &source_ptcls_per_elem);
   InitializeParticlesInRegion(mesh, pumipic_ptcls.get(), region_id);
   p_pumi_particle_at_elem_boundary_handler =
       std::make_unique<pumitally::ParticleAtElemBoundary>(
