@@ -18,6 +18,9 @@
 // ---------------------------------------------------------------------------
 constexpr uint NUM_ENERGY_BINS = 5;
 
+// Particle ID to write trajectory for (set to -1 to disable)
+constexpr int TRACK_PARTICLE_ID = -1;
+
 /// Energy bin boundaries (eV): [0, 2), [2, 5), [5, 10), [10, 20), [20, ∞)
 KOKKOS_FUNCTION inline uint get_energy_bin(const double energy) {
   if (energy < 2.0) return 0;
@@ -156,6 +159,14 @@ void Transport(pumitally::PumiTallyImpl &pumi_tally, DG2Physics &physics,
 
   const auto num_particles = pumi_tally.num_particles;
 
+  // --- Track particle trajectory (single particle) ---
+  std::ofstream track_csv;
+  Kokkos::View<double[3]> track_ptcl_pos("track_ptcl_pos");
+  if constexpr (TRACK_PARTICLE_ID >= 0) {
+    track_csv.open("track.csv");
+    track_csv << "iter,x,y,z\n";
+  }
+
   for (int iter = 0; iter < max_iterations; ++iter) {
     auto particle_dest = pumi_tally.pumipic_ptcls->get<1>();
     auto particle_orig = pumi_tally.pumipic_ptcls->get<0>();
@@ -177,6 +188,15 @@ void Transport(pumitally::PumiTallyImpl &pumi_tally, DG2Physics &physics,
         particle_info.position[0] = particle_orig(pid, 0);
         particle_info.position[1] = particle_orig(pid, 1);
         particle_info.position[2] = particle_orig(pid, 2);
+
+        // Save origin before it gets overwritten by sample_collision_distance
+        if constexpr (TRACK_PARTICLE_ID >= 0) {
+          if (pid == TRACK_PARTICLE_ID) {
+            track_ptcl_pos[0] = particle_info.position[0];
+            track_ptcl_pos[1] = particle_info.position[1];
+            track_ptcl_pos[2] = particle_info.position[2];
+          }
+        }
 
         if (iter == 0) {
           particle_info.direction[0] = initial_direction(pid * 3 + 0);
@@ -246,6 +266,16 @@ void Transport(pumitally::PumiTallyImpl &pumi_tally, DG2Physics &physics,
     };
     pumipic::parallel_for(pumi_tally.pumipic_ptcls.get(), get_new_destination,
                           "get new destination");
+
+    // --- Write tracked particle origin (before this step's search) ---
+    if constexpr (TRACK_PARTICLE_ID >= 0) {
+      auto pos_h = Kokkos::create_mirror_view(track_ptcl_pos);
+      Kokkos::deep_copy(pos_h, track_ptcl_pos);
+      track_csv << iter << ","
+                << pos_h[0] << ","
+                << pos_h[1] << ","
+                << pos_h[2] << "\n";
+    }
 
     // --- Determine energy bin for each particle on device ---
     //     The filter bins must be set BEFORE SearchAndRebuild so that the
