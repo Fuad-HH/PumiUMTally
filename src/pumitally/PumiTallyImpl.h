@@ -35,7 +35,8 @@ enum class SourceDistribution {
   UNIFORM, // Source uniformly distributed across the mesh
   EQUAL,   // Source at centroids of each element
   ZERO,    // in the zeroth element centroid
-  REGION   // Source distributed across elements of a specific class_id region
+  REGION,  // Source distributed across elements of a specific class_id region
+  ELEMENTS // Source read from element-source.csv (element_id, count)
 };
 
 /**
@@ -295,6 +296,7 @@ struct ParticleAtElemBoundary {
 struct PumiTallyImpl {
   Omega_h::LO num_particles = 1e5; //!< Number of Particles
   int source_region_id = -1;       //!< class_id for REGION source distribution
+  std::string source_csv_filename; //!< CSV file for ELEMENTS source distribution
   std::vector<Omega_h::LO> source_ptcls_per_elem; //!< Source distribution (particles per element)
   std::string oh_mesh_filename;    //!< Omega_h mesh file name
 
@@ -331,7 +333,8 @@ struct PumiTallyImpl {
   PumiTallyImpl(const std::string &mesh_filename, Omega_h::LO num_ptcls,
                 int argc, char **argv,
                 SourceDistribution source_dist = SourceDistribution::ZERO,
-                int source_region_id = -1);
+                int source_region_id = -1,
+                const std::string &source_csv_filename = "");
 
   ~PumiTallyImpl() = default;
 
@@ -339,6 +342,9 @@ struct PumiTallyImpl {
 
   void InitializePUMIParticleStructureForRegion(Omega_h::Mesh &mesh,
                                                  int region_id);
+
+  void InitializePUMIParticleStructureFromCSV(Omega_h::Mesh &mesh,
+                                               const std::string &csv_filename);
 
   void LoadMeshAndInitParticles(int &argc, char **&argv);
 

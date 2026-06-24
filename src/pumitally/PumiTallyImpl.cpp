@@ -11,12 +11,20 @@
 #include <pumipic_mesh.hpp>
 #include <pumipic_ptcl_ops.hpp>
 
+#include <fstream>
+#include <sstream>
+
 #include "PumiTallyImpl.h"
 
 namespace pumitally {
 std::unique_ptr<PPPS> CreateParticleDS(const Omega_h::Mesh &mesh,
                                        pumipic::lid_t num_ptcls,
                                        std::vector<Omega_h::LO> *out_ptcls_per_elem = nullptr);
+
+std::unique_ptr<PPPS> CreateParticleDSFromCSV(
+    const Omega_h::Mesh &mesh, pumipic::lid_t num_ptcls,
+    const std::string &csv_filename,
+    std::vector<Omega_h::LO> *out_ptcls_per_elem);
 
 void InitializeParticlesInElement0(Omega_h::Mesh &mesh, pumitally::PPPS *ptcls);
 void InitializeParticlesInRegion(Omega_h::Mesh &mesh, pumitally::PPPS *ptcls,
@@ -61,8 +69,11 @@ void TallyTimes::PrintTimes() const {
 PumiTallyImpl::PumiTallyImpl(const std::string &mesh_filename,
                              const Omega_h::LO num_ptcls, int argc, char **argv,
                              const SourceDistribution source_dist,
-                             int source_region_id)
-    : num_particles(num_ptcls), source_region_id(source_region_id) {
+                             int source_region_id,
+                             const std::string &source_csv_filename)
+    : num_particles(num_ptcls),
+      source_region_id(source_region_id),
+      source_csv_filename(source_csv_filename) {
   oh_mesh_filename = mesh_filename;
 
   position_dev_buffer = Omega_h::Write<Omega_h::Real>(num_particles * 3, 0.0,
@@ -81,6 +92,8 @@ PumiTallyImpl::PumiTallyImpl(const std::string &mesh_filename,
   // Initialize particle structure based on source type
   if (source_dist == SourceDistribution::REGION) {
     InitializePUMIParticleStructureForRegion(mesh, source_region_id);
+  } else if (source_dist == SourceDistribution::ELEMENTS) {
+    InitializePUMIParticleStructureFromCSV(mesh, source_csv_filename);
   } else {
     InitializePUMIParticleStructure(mesh);
   }
@@ -100,6 +113,10 @@ PumiTallyImpl::PumiTallyImpl(const std::string &mesh_filename,
   case SourceDistribution::REGION:
     InitializeParticlesInRegion(*p_picparts->mesh(), pumipic_ptcls.get(),
                                 source_region_id);
+    break;
+  case SourceDistribution::ELEMENTS:
+    InitializeParticlesInRegion(*p_picparts->mesh(), pumipic_ptcls.get(),
+                                0 /*unused*/);
     break;
   default:
     throw std::runtime_error("Invalid source distribution");
@@ -1363,6 +1380,94 @@ std::unique_ptr<PPPS> CreateParticleDSForRegion(
   return ptcls;
 }
 
+std::unique_ptr<PPPS> CreateParticleDSFromCSV(
+    const Omega_h::Mesh &mesh, pumipic::lid_t num_ptcls,
+    const std::string &csv_filename,
+    std::vector<Omega_h::LO> *out_ptcls_per_elem) {
+  Omega_h::Int ne = mesh.nelems();
+  pumitally::PPPS::kkLidView ptcls_per_elem("ptcls_per_elem", ne);
+  pumitally::PPPS::kkGidView element_gids("element_gids", ne);
+
+  Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace> policy;
+
+  Omega_h::parallel_for(
+      ne, OMEGA_H_LAMBDA(const Omega_h::LO &i) {
+        element_gids(i) = i;
+        ptcls_per_elem(i) = 0;
+      });
+
+  // Read element-source.csv: two columns — element_id, num_particles
+  std::ifstream csv_file(csv_filename);
+  if (!csv_file.is_open()) {
+    throw std::runtime_error("Cannot open element source CSV file: " +
+                             csv_filename);
+  }
+
+  Omega_h::LO total_from_csv = 0;
+  Omega_h::LO n_entries = 0;
+  std::string line;
+  while (std::getline(csv_file, line)) {
+    // Skip empty lines and comment lines
+    if (line.empty() || line[0] == '#') {
+      continue;
+    }
+    // Parse: element_id, num_particles
+    std::stringstream ss(line);
+    std::string elem_str, count_str;
+    if (!std::getline(ss, elem_str, ',') || !std::getline(ss, count_str)) {
+      throw std::runtime_error("Malformed line in element source CSV: " + line);
+    }
+    Omega_h::LO elem_id = std::stol(elem_str);
+    Omega_h::LO count = std::stol(count_str);
+
+    if (elem_id < 0 || elem_id >= ne) {
+      throw std::runtime_error(
+          "Element ID " + std::to_string(elem_id) +
+          " in source CSV is out of range [0, " + std::to_string(ne) + ")");
+    }
+    if (count < 0) {
+      throw std::runtime_error("Negative particle count " +
+                               std::to_string(count) + " for element " +
+                               std::to_string(elem_id) + " in source CSV");
+    }
+
+    ptcls_per_elem(elem_id) = count;
+    total_from_csv += count;
+    n_entries++;
+  }
+
+  printf("[INFO] Read %d entries from %s, total particles in CSV: %d\n",
+         n_entries, csv_filename.c_str(), total_from_csv);
+
+  // Verify total matches command-line
+  if (total_from_csv != static_cast<Omega_h::LO>(num_ptcls)) {
+    throw std::runtime_error(
+        "Total particles in source CSV (" + std::to_string(total_from_csv) +
+        ") does not match command-line argument (" +
+        std::to_string(static_cast<Omega_h::LO>(num_ptcls)) +
+        "). Please update the CSV file or the command-line argument.");
+  }
+
+  // Save source distribution if requested
+  if (out_ptcls_per_elem) {
+    out_ptcls_per_elem->resize(ne);
+    auto ptcls_host = Kokkos::create_mirror_view(ptcls_per_elem);
+    Kokkos::deep_copy(ptcls_host, ptcls_per_elem);
+    for (Omega_h::LO i = 0; i < ne; ++i) {
+      (*out_ptcls_per_elem)[i] = ptcls_host(i);
+    }
+  }
+
+  printf("PumiPIC Using CPU for simulation...\n");
+  policy =
+      Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace>(10000, Kokkos::AUTO());
+
+  auto ptcls = std::make_unique<pumipic::DPS<pumitally::PPParticle>>(
+      policy, ne, num_ptcls, ptcls_per_elem, element_gids);
+
+  return ptcls;
+}
+
 void InitializeParticlesInElement0(Omega_h::Mesh &mesh,
                                    pumitally::PPPS *ptcls) {
   const auto &coords = mesh.coords();
@@ -1474,6 +1579,26 @@ void PumiTallyImpl::InitializePUMIParticleStructureForRegion(
   printf("PumiPIC Mesh and data structure created with %d and %d as particle "
          "structure capacity (region %d)\n",
          p_picparts->mesh()->nelems(), pumipic_ptcls->capacity(), region_id);
+}
+
+void PumiTallyImpl::InitializePUMIParticleStructureFromCSV(
+    Omega_h::Mesh &mesh, const std::string &csv_filename) {
+  pumipic_ptcls =
+      CreateParticleDSFromCSV(mesh, num_particles, csv_filename,
+                              &source_ptcls_per_elem);
+  InitializeParticlesInRegion(mesh, pumipic_ptcls.get(), 0 /*unused*/);
+  p_pumi_particle_at_elem_boundary_handler =
+      std::make_unique<pumitally::ParticleAtElemBoundary>(
+          mesh.nelems(), mesh.nverts(), pumipic_ptcls->capacity());
+
+  // Cache element-to-vertex connectivity for node tally support
+  p_pumi_particle_at_elem_boundary_handler->elem2vert =
+      mesh.ask_down(Omega_h::REGION, Omega_h::VERT).ab2b;
+
+  printf("PumiPIC Mesh and data structure created with %d and %d as particle "
+         "structure capacity (CSV source: %s)\n",
+         p_picparts->mesh()->nelems(), pumipic_ptcls->capacity(),
+         csv_filename.c_str());
 }
 
 void PumiTallyImpl::ReadFullMesh(int &argc, char **&argv) {
