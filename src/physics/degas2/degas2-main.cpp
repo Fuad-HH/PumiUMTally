@@ -13,6 +13,20 @@
 #include "DG2Physics.h"
 #include "PumiTallyImpl.h"
 
+// ---------------------------------------------------------------------------
+// Energy tally configuration
+// ---------------------------------------------------------------------------
+constexpr uint NUM_ENERGY_BINS = 5;
+
+/// Energy bin boundaries (eV): [0, 2), [2, 5), [5, 10), [10, 20), [20, ∞)
+KOKKOS_FUNCTION inline uint get_energy_bin(const double energy) {
+  if (energy < 2.0) return 0;
+  if (energy < 5.0) return 1;
+  if (energy < 10.0) return 2;
+  if (energy < 20.0) return 3;
+  return 4;
+}
+
 struct InputParameters {
   InputParameters(int argc, char *argv[]);
   std::string mesh_name;
@@ -41,7 +55,7 @@ struct Fields {
   Omega_h::Reals ion_temperature;
   Omega_h::Reals electron_density;
   Omega_h::Reals ion_density;
-  Omega_h::Reals bulk_flow_velocity;
+  //Omega_h::Reals bulk_flow_velocity;
 };
 
 void Transport(pumitally::PumiTallyImpl &pumi_tally, DG2Physics &physics,
@@ -49,7 +63,7 @@ void Transport(pumitally::PumiTallyImpl &pumi_tally, DG2Physics &physics,
                const Omega_h::Read<Omega_h::Real> &ion_density,
                const Omega_h::Read<Omega_h::Real> &electron_temperature,
                const Omega_h::Read<Omega_h::Real> &ion_temperature,
-               const Omega_h::Read<Omega_h::Real> &bulk_flow_velocity,
+               //const Omega_h::Read<Omega_h::Real> &bulk_flow_velocity,
                const Kokkos::View<double *> &initial_direction,
                const Kokkos::View<double *> &initial_alpha, int max_iterations);
 
@@ -96,11 +110,11 @@ int main(int argc, char *argv[]) {
         mesh.get_array<Omega_h::Real>(Omega_h::REGION, "electron_temperature");
     auto ion_temperature =
         mesh.get_array<Omega_h::Real>(Omega_h::REGION, "ion_temperature");
-    auto bulk_flow_velocity =
+    /*auto bulk_flow_velocity =
         mesh.get_array<Omega_h::Real>(Omega_h::REGION, "bulk_flow_velocity");
-
+    */
     Transport(pumi_tally, physics, electron_density, ion_density,
-              electron_temperature, ion_temperature, bulk_flow_velocity,
+              electron_temperature, ion_temperature, /*bulk_flow_velocity,*/
               initial_direction, initial_alpha, input_params.max_iterations);
 
     // Finalize and output results
@@ -123,16 +137,26 @@ void Transport(pumitally::PumiTallyImpl &pumi_tally, DG2Physics &physics,
                const Omega_h::Read<Omega_h::Real> &ion_density,
                const Omega_h::Read<Omega_h::Real> &electron_temperature,
                const Omega_h::Read<Omega_h::Real> &ion_temperature,
-               const Omega_h::Read<Omega_h::Real> &bulk_flow_velocity,
+               //const Omega_h::Read<Omega_h::Real> &bulk_flow_velocity,
                const Kokkos::View<double *> &initial_direction,
                const Kokkos::View<double *> &initial_alpha,
                int max_iterations) {
+
+  // --- Register an element tally with a single energy filter ---
+  pumi_tally.AddElementTally({NUM_ENERGY_BINS});
+
+  // --- Enable reflective boundary condition ---
+  //     The boundary handler's functor will reflect particles at domain
+  //     boundaries (specular reflection) and the reflected track contributes
+  //     to the tally.
+  pumi_tally.SetReflectiveBoundaryCondition();
+
+  const auto num_particles = pumi_tally.num_particles;
 
   for (int iter = 0; iter < max_iterations; ++iter) {
     auto particle_dest = pumi_tally.pumipic_ptcls->get<1>();
     auto particle_orig = pumi_tally.pumipic_ptcls->get<0>();
     auto particle_weight = pumi_tally.pumipic_ptcls->get<4>();
-    auto particle_group = pumi_tally.pumipic_ptcls->get<5>();
 
     auto last_exit =
         pumi_tally.p_pumi_particle_at_elem_boundary_handler->last_exit_;
@@ -165,7 +189,7 @@ void Transport(pumitally::PumiTallyImpl &pumi_tally, DG2Physics &physics,
           particle_info.direction[2] = direction[2];
         }
         particle_info.weight = particle_weight(pid);
-        particle_info.energy_group = particle_group(pid);
+        //particle_info.energy_group = 0; // determined via filter bins (see below)
         particle_info.particle_index = pid;
 
         FieldInfo field_info;
@@ -173,9 +197,9 @@ void Transport(pumitally::PumiTallyImpl &pumi_tally, DG2Physics &physics,
         field_info.ion_temperature = ion_temperature[e];
         field_info.electron_density = electron_density[e];
         field_info.ion_density = ion_density[e];
-        field_info.bulk_flow_velocity[0] = bulk_flow_velocity[e * 3 + 0];
-        field_info.bulk_flow_velocity[1] = bulk_flow_velocity[e * 3 + 1];
-        field_info.bulk_flow_velocity[2] = bulk_flow_velocity[e * 3 + 2];
+        //field_info.bulk_flow_velocity[0] = bulk_flow_velocity[e * 3 + 0];
+        //field_info.bulk_flow_velocity[1] = bulk_flow_velocity[e * 3 + 1];
+        //field_info.bulk_flow_velocity[2] = bulk_flow_velocity[e * 3 + 2];
 
         //	printf("\n---- Direction (pid = %d) before collision: (%f, %f,
         //%f). Original pos: (%f, %f, %f), pos (%f, %f, %f)  ---- \n", pid,
@@ -197,15 +221,40 @@ void Transport(pumitally::PumiTallyImpl &pumi_tally, DG2Physics &physics,
         particle_dest(pid, 1) = particle_info.position[1];
         particle_dest(pid, 2) = particle_info.position[2];
         particle_weight(pid) = particle_info.weight;
-        particle_group(pid) = 0; // physics kernel does not handle groups yet
 
         alpha[pid] = (iter == 0) ? initial_alpha(pid) : particle_info.alpha;
+
+        //printf("P %d Orig (%f, %f, %f) Dest (%f, %f, %f) alpha %f\n", pid, particle_orig(pid, 0), particle_orig(pid, 1), particle_orig(pid, 2), particle_dest(pid, 0), particle_dest(pid, 1), particle_dest(pid, 2), alpha[pid]);
       }
     };
     pumipic::parallel_for(pumi_tally.pumipic_ptcls.get(), get_new_destination,
                           "get new destination");
-    pumi_tally.SearchAndRebuild(
-        false, true); // for now, always rebuild the pp structure
+
+    // --- Determine energy bin for each particle on device ---
+    //     The filter bins must be set BEFORE SearchAndRebuild so that the
+    //     boundary handler's EvaluateFlux can accumulate tally contributions
+    //     into the correct energy bin.  Bins are computed on device and
+    //     passed directly to the filter array.
+    {
+      Kokkos::View<uint *> energy_bins_dev("energy_bins", num_particles);
+      auto particle_energy = physics.particle_energy;
+      Kokkos::parallel_for(
+          num_particles, KOKKOS_LAMBDA(const int pid) {
+            energy_bins_dev(pid) = get_energy_bin(particle_energy(pid));
+          });
+      Kokkos::fence();
+      pumi_tally.UpdateFilterBins(energy_bins_dev);
+    }
+
+    const bool search_succeeded = pumi_tally.SearchAndRebuild(false, true);
+    if (!search_succeeded) {
+      fprintf(stderr,
+              "[ERROR] Particle search failed on iteration %d. The loop limit "
+              "may be too small for the particle step size. Consider "
+              "increasing the loop limit in ParticleTracer.tpp.\n",
+              iter);
+      break; // Stop simulation — particle positions are unreliable
+    }
     Kokkos::fence();
   }
 }
@@ -284,10 +333,10 @@ void Fields::SetAsTag(Omega_h::Mesh &mesh) const {
       ion_density.size() == mesh.nelems(),
       "Ion density size (%d) must be equal to number of elements (%d)\n",
       ion_density.size(), mesh.nelems());
-  OMEGA_H_CHECK_PRINTF(bulk_flow_velocity.size() == mesh.nelems() * 3,
-                       "Bulk flow velocity size (%d) must be equal to number "
-                       "of elements * 3 (%d)\n",
-                       bulk_flow_velocity.size(), mesh.nelems() * 3);
+  //OMEGA_H_CHECK_PRINTF(bulk_flow_velocity.size() == mesh.nelems() * 3,
+  //                     "Bulk flow velocity size (%d) must be equal to number "
+  //                     "of elements * 3 (%d)\n",
+  //                     bulk_flow_velocity.size(), mesh.nelems() * 3);
 
   // Assuming the mesh has a field for each of the properties
   mesh.add_tag<Omega_h::Real>(Omega_h::REGION, "electron_temperature", 1,
@@ -297,8 +346,8 @@ void Fields::SetAsTag(Omega_h::Mesh &mesh) const {
   mesh.add_tag<Omega_h::Real>(Omega_h::REGION, "electron_density", 1,
                               electron_density);
   mesh.add_tag<Omega_h::Real>(Omega_h::REGION, "ion_density", 1, ion_density);
-  mesh.add_tag<Omega_h::Real>(Omega_h::REGION, "bulk_flow_velocity", 3,
-                              bulk_flow_velocity);
+  //mesh.add_tag<Omega_h::Real>(Omega_h::REGION, "bulk_flow_velocity", 3,
+  //                            bulk_flow_velocity);
 }
 
 // TODO: Implement the function to retrieve field values based on centroids
@@ -317,7 +366,7 @@ Fields::Fields(const Omega_h::Reals &centroids) {
   Omega_h::HostWrite<Omega_h::Real> host_ion_temperature(num_elements, "host_i_temp");
   Omega_h::HostWrite<Omega_h::Real> host_electron_density(num_elements, "host_e_density");
   Omega_h::HostWrite<Omega_h::Real> host_ion_density(num_elements, "host_i_density");
-  Omega_h::HostWrite<Omega_h::Real> host_bulk_flow_velocity(3 * num_elements, "host_bulk_flow_velocity");
+  //Omega_h::HostWrite<Omega_h::Real> host_bulk_flow_velocity(3 * num_elements, "host_bulk_flow_velocity");
 
   // Read in the field values
   std::ifstream fieldvals{"vals.csv"};
@@ -346,6 +395,7 @@ Fields::Fields(const Omega_h::Reals &centroids) {
   electron_density = Omega_h::Reals(host_electron_density);
   electron_temperature = Omega_h::Reals(host_electron_temperature);
   ion_temperature = Omega_h::Reals(host_ion_temperature);
+  //bulk_flow_velocity = Omega_h::Reals(host_bulk_flow_velocity);
 }
 
 void PrintInitialInfo(const std::string &mesh_name,
@@ -377,6 +427,8 @@ InputParameters::InputParameters(const int argc, char *argv[]) {
     source_distribution = pumitally::SourceDistribution::UNIFORM;
   } else if (source_dist_str == "equal") {
     source_distribution = pumitally::SourceDistribution::EQUAL;
+  } else if (source_dist_str == "zero") {
+    source_distribution = pumitally::SourceDistribution::ZERO;
   } else {
     throw std::runtime_error(
         "Invalid source distribution. Use 'uniform' or 'equal'.");

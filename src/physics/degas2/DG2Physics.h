@@ -18,7 +18,7 @@ struct ParticleInfo {
   double position[3];  // Position in space (x, y, z)
   double direction[3]; // Direction vector (unit vector)
   double weight;
-  int energy_group; // Energy group *index*
+  //int energy_group; // Energy group *index*
   int particle_index;
   double alpha; // To be multiplied in when computing tally
 };
@@ -28,7 +28,7 @@ struct FieldInfo {
   double ion_temperature;
   double electron_density;
   double ion_density;
-  double bulk_flow_velocity[3];
+  // double bulk_flow_velocity[3];
 };
 
 class DG2Physics {
@@ -229,6 +229,9 @@ public:
                (field_info.electron_density * sigma_ion +
                 field_info.ion_density * sigma_cx) *
                0.01; // m. n in cm^-3
+    l = l * 1e6;
+
+    //printf("P %d l %.15f\n", particle_info.particle_index, l);
     particle_info.position[0] += l * particle_info.direction[0];
     particle_info.position[1] += l * particle_info.direction[1];
     particle_info.position[2] += l * particle_info.direction[2];

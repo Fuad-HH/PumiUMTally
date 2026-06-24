@@ -300,6 +300,21 @@ void PumiTallyImpl::UpdateFilterBins(const std::vector<uint> &bins) {
   p_pumi_particle_at_elem_boundary_handler->SetFilterBins(bins);
 }
 
+void PumiTallyImpl::UpdateFilterBins(const Kokkos::View<uint *> &bins) {
+  const auto &spec = p_pumi_particle_at_elem_boundary_handler->GetTallySpec();
+  OMEGA_H_CHECK(spec.is_initialized);
+
+  size_t expected_size =
+      static_cast<size_t>(num_particles) * spec.GetNumFilters();
+  OMEGA_H_CHECK_PRINTF(
+      static_cast<size_t>(bins.size()) == expected_size,
+      "Filter bins View size (%d) must equal num_particles (%d) * n_filters "
+      "(%u) = %zu\n",
+      bins.size(), num_particles, spec.GetNumFilters(), expected_size);
+
+  p_pumi_particle_at_elem_boundary_handler->SetFilterBins(bins);
+}
+
 void PumiTallyImpl::SetReflectiveBoundaryCondition() {
   p_pumi_particle_at_elem_boundary_handler->SetBoundaryCondition(
       ParticleAtElemBoundary::BoundaryCondition::REFLECTIVE,
@@ -458,8 +473,19 @@ void apply_reflection_boundary_condition(
         }
       }
 
+      // Material boundaries are transparent — the particle continues
+      // through them without stopping.  Only the destination
+      // (lastExit == -1) or the domain boundary (next_elems == -1) mark
+      // the particle as done.  This lets the search trace the particle
+      // all the way through material interfaces; the caller (degas2) will
+      // sample a new collision distance with the new material's properties
+      // on the next iteration when lastExit == -1.
+      if (hit_material_boundary) {
+        material_ids[pid] = class_ids[next_elems[pid]];
+      }
+
       ptcl_done[pid] =
-          (reached_destination || hit_material_boundary) ? 1 : ptcl_done[pid];
+          (reached_destination) ? 1 : ptcl_done[pid];
 
       if (!initial) {
         if (next_elems[pid] == -1) {
@@ -699,6 +725,7 @@ ParticleAtElemBoundary::ParticleAtElemBoundary(const Omega_h::LO num_elements,
                                                const Omega_h::LO capacity)
     : is_initial_track(true), nelem(num_elements),
       prev_xpoint(capacity * 3, 0.0, "prev_xpoint"),
+      alpha_(capacity, 1.0, "alpha"),
       multi_dim_tallies_active(false), active_n_filters(0),
       num_vertices(_num_vertices),
       boundary_condition(BoundaryCondition::VACUUM) {
@@ -773,6 +800,24 @@ void ParticleAtElemBoundary::SetFilterBins(const std::vector<uint> &bins) {
                Kokkos::MemoryTraits<Kokkos::Unmanaged>>
       bins_dev(filter_bins_dev.data(), filter_bins_dev.size());
   Kokkos::deep_copy(bins_dev, bins_host);
+}
+
+void ParticleAtElemBoundary::SetFilterBins(const Kokkos::View<uint *> &bins) {
+  uint n_filters = active_n_filters;
+
+  Omega_h::LO capacity = static_cast<Omega_h::LO>(prev_xpoint.size() / 3);
+  size_t required_size = static_cast<size_t>(capacity) * n_filters;
+
+  if (static_cast<size_t>(filter_bins_dev.size()) != required_size) {
+    filter_bins_dev = Omega_h::Write<Omega_h::LO>(required_size, 0,
+                                                   "filter_bins_dev");
+  }
+
+  // Direct device-to-device copy (avoids host round-trip)
+  Kokkos::View<Omega_h::LO *, PPExeSpace,
+               Kokkos::MemoryTraits<Kokkos::Unmanaged>>
+      bins_dev(filter_bins_dev.data(), bins.size());
+  Kokkos::deep_copy(bins_dev, bins);
 }
 
 void ParticleAtElemBoundary::SetBoundaryCondition(BoundaryCondition bc,
@@ -888,6 +933,9 @@ void ParticleAtElemBoundary::EvaluateFlux(
   const auto filt_bins = filter_bins_dev;
   const uint n_filt = active_n_filters;
 
+  // Alpha weight — per-particle multiplier for tally contribution
+  const auto alpha_l = alpha_;
+
   // Element-to-vertex connectivity for node tallies (size: nelem*4 for tets)
   const auto e2v = elem2vert;
 
@@ -902,7 +950,7 @@ void ParticleAtElemBoundary::EvaluateFlux(
                                        prev_xpoint_l[pid * 3 + 2]};
 
       const Omega_h::Real segment_length = Omega_h::norm(dest - orig);
-      const Omega_h::Real contribution = segment_length * p_wgt(pid);
+      const Omega_h::Real contribution = segment_length * p_wgt(pid) * alpha_l[pid];
 
       // Multi-dimensional tallies via DynRankView operator()
       // rank = 1 (spatial) + n_filt; switch dispatches correct number of indices
@@ -1079,7 +1127,7 @@ void CommitParticlePositions(PPPS *ptcls) {
   ps::parallel_for(ptcls, update_particle_position);
 }
 
-void PumiTallyImpl::SearchAndRebuild(const bool initial,
+bool PumiTallyImpl::SearchAndRebuild(const bool initial,
                                      const bool migrate) const {
   assert((is_pumipic_initialized == false && initial == true) ||
          (is_pumipic_initialized == true && initial == false));
@@ -1102,6 +1150,14 @@ void PumiTallyImpl::SearchAndRebuild(const bool initial,
     printf(
         "ERROR: Not all particles are found. May need more loops in search\n");
   }
+
+  // Soft-copy: point the handler's last_exit_ to the ParticleTracer's
+  // last_exits_ array.  Callers (degas2) read this on the next iteration
+  // to decide: -1 = reached destination, else = hit boundary face.
+  p_pumi_particle_at_elem_boundary_handler->last_exit_ =
+      p_particle_tracer->GetLastExits();
+
+  return found_all;
 }
 
 std::unique_ptr<PPPS> CreateParticleDS(const Omega_h::Mesh &mesh,
@@ -1156,6 +1212,7 @@ void InitializeParticlesInElement0(Omega_h::Mesh &mesh,
   auto init_loc = ptcls->get<0>();
   auto pids = ptcls->get<2>();
   auto in_fly = ptcls->get<3>();
+  auto p_wgt = ptcls->get<4>();
 
   auto set_initial_positions =
       PS_LAMBDA(const int &e, const int &pid, const int &mask) {
@@ -1165,6 +1222,7 @@ void InitializeParticlesInElement0(Omega_h::Mesh &mesh,
       init_loc(pid, 0) = centroid_of_el0[0];
       init_loc(pid, 1) = centroid_of_el0[1];
       init_loc(pid, 2) = centroid_of_el0[2];
+      p_wgt(pid) = 1.0;
     }
   };
   pumipic::parallel_for(ptcls, set_initial_positions,

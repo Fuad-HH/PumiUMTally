@@ -46,11 +46,10 @@ enum class SourceDistribution {
  * @n   2-ID,
  * @n   3-in_advance_particle_queue,
  * @n   4-weight
- * @n   5-group
  */
 using PPParticle =
     pumipic::MemberTypes<pumipic::Vector3d, pumipic::Vector3d, Omega_h::LO,
-                         Omega_h::I16, Omega_h::Real, Omega_h::I16>;
+                         Omega_h::I16, Omega_h::Real>;
 using PPPS = pumipic::ParticleStructure<PPParticle>; //!< PUMI-PiC Particle DS
 using PPExeSpace =
     Kokkos::DefaultExecutionSpace; //!< PUMI-PiC Default Execution Space
@@ -197,6 +196,14 @@ struct ParticleAtElemBoundary {
    */
   void SetFilterBins(const std::vector<uint> &bins);
 
+  /**
+   * @brief Set per-particle filter bin assignments from a device View
+   * @param bins Kokkos View on default execution space:
+   *        [pid * n_filters + dim] = bin_index
+   *        Size must be nparticles * n_filters.
+   */
+  void SetFilterBins(const Kokkos::View<uint *> &bins);
+
   // --- New: Boundary condition ---
 
   /**
@@ -267,9 +274,11 @@ struct ParticleAtElemBoundary {
                                               //!< (stored separately from mesh so
                                               //!<  they survive mesh copies)
 
-  // temporary gabe merging variables
-  // these will be removed after the operator functinality is merged to both
-  Omega_h::Write<Omega_h::LO> last_exit_;
+  // Soft-copy of ParticleTracer::last_exits_ — read by callers (degas2) to
+  // check if a particle reached its destination (-1) or hit a boundary.
+  Omega_h::LOs last_exit_;
+
+  // Per-particle alpha weight multiplier for tally contribution (1/|v|)
   Omega_h::Write<Omega_h::Real> alpha_;
 };
 
@@ -328,7 +337,7 @@ struct PumiTallyImpl {
 
   void InitPUMILibrary(int &argc, char **&argv);
 
-  void SearchAndRebuild(bool initial, bool migrate = true) const;
+  bool SearchAndRebuild(bool initial, bool migrate = true) const;
 
   void ReadFullMesh(int &argc, char **&argv);
 
@@ -367,6 +376,14 @@ struct PumiTallyImpl {
    * @param bins size = nparticles * n_filters
    */
   void UpdateFilterBins(const std::vector<uint> &bins);
+
+  /**
+   * @brief Set per-particle filter bin assignments from a device View
+   * @param bins Kokkos View on default execution space:
+   *        [pid * n_filters + dim] = bin_index
+   *        Size must be nparticles * n_filters.
+   */
+  void UpdateFilterBins(const Kokkos::View<uint *> &bins);
 
   /**
    * @brief Set the boundary condition for particle-boundary interactions
