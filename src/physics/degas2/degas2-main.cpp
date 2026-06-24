@@ -209,11 +209,18 @@ void Transport(pumitally::PumiTallyImpl &pumi_tally, DG2Physics &physics,
         // particle_info.position[2]);
 
         if (iter != 0) { // first iteration, we do not need to collide
-          if (last_exit[pid] == -1) { // reached destination
+          // -1 = reached destination → collide (randomize direction)
+          // -2 = hit material boundary → keep direction, just resample
+          //      collision distance with new material's properties below
+          if (last_exit[pid] == -1) {
             physics.collide_particle(particle_info, field_info);
           }
         }
 
+        // Always sample a new collision distance.  For destinations (-1)
+        // this uses the post-collision direction; for material boundaries
+        // (-2) this re-samples with the current element's field values
+        // along the same direction.
         physics.sample_collision_distance(particle_info, field_info);
 
         // Update particle position and direction

@@ -473,19 +473,26 @@ void apply_reflection_boundary_condition(
         }
       }
 
-      // Material boundaries are transparent — the particle continues
-      // through them without stopping.  Only the destination
-      // (lastExit == -1) or the domain boundary (next_elems == -1) mark
-      // the particle as done.  This lets the search trace the particle
-      // all the way through material interfaces; the caller (degas2) will
-      // sample a new collision distance with the new material's properties
-      // on the next iteration when lastExit == -1.
+      // Material boundary: stop the particle at the intersection point.
+      // Keep it in the CURRENT element (where the point is on a face, so
+      // the barycentric check passes cleanly).  Signal to Transport via
+      // lastExit = -2 that this was a material boundary (not a destination
+      // and not a domain boundary), so Transport skips collision but
+      // re-samples the collision distance.
       if (hit_material_boundary) {
+        particle_origin(pid, 0) = inter_points[pid * 3 + 0];
+        particle_origin(pid, 1) = inter_points[pid * 3 + 1];
+        particle_origin(pid, 2) = inter_points[pid * 3 + 2];
+        particle_destination(pid, 0) = inter_points[pid * 3 + 0];
+        particle_destination(pid, 1) = inter_points[pid * 3 + 1];
+        particle_destination(pid, 2) = inter_points[pid * 3 + 2];
+        next_elems[pid] = elem_ids[pid];
+        lastExit[pid] = -2;
         material_ids[pid] = class_ids[next_elems[pid]];
       }
 
       ptcl_done[pid] =
-          (reached_destination) ? 1 : ptcl_done[pid];
+          (reached_destination || hit_material_boundary) ? 1 : ptcl_done[pid];
 
       if (!initial) {
         if (next_elems[pid] == -1) {
