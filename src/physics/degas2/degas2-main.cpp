@@ -167,12 +167,12 @@ void Transport(pumitally::PumiTallyImpl &pumi_tally, DG2Physics &physics,
     printf("\n### iter = %d  ###\n", iter);
 
     auto alpha = pumi_tally.p_pumi_particle_at_elem_boundary_handler->alpha_;
+    auto saved_direction_l =
+        pumi_tally.p_pumi_particle_at_elem_boundary_handler->direction_;
     auto get_new_destination =
         PS_LAMBDA(const int &e, const int &pid, const int &mask) {
 
-      if (mask > 0) { // FIXME: check if the particle is at destination or at
-                      // the boundary
-                      //
+      if (mask > 0) {
         ParticleInfo particle_info;
         particle_info.position[0] = particle_orig(pid, 0);
         particle_info.position[1] = particle_orig(pid, 1);
@@ -182,11 +182,20 @@ void Transport(pumitally::PumiTallyImpl &pumi_tally, DG2Physics &physics,
           particle_info.direction[0] = initial_direction(pid * 3 + 0);
           particle_info.direction[1] = initial_direction(pid * 3 + 1);
           particle_info.direction[2] = initial_direction(pid * 3 + 2);
+        } else if (last_exit[pid] == -2) {
+          // Face-stop: rebuild() zeroed particle_dest, so use saved direction.
+          particle_info.direction[0] = saved_direction_l[pid * 3 + 0];
+          particle_info.direction[1] = saved_direction_l[pid * 3 + 1];
+          particle_info.direction[2] = saved_direction_l[pid * 3 + 2];
         } else {
+          // Destination reached (or search hit loop limit).
+          // Note: rebuild() zeroes particle_dest after search, so the
+          // direction from dest-orig is unreliable — but collide_particle
+          // overwrites the direction anyway when lastExit == -1.
           auto direction = Omega_h::normalize(Omega_h::Vector<3>{
-              particle_info.position[0] - particle_dest(pid, 0),
-              particle_info.position[1] - particle_dest(pid, 1),
-              particle_info.position[2] - particle_dest(pid, 2)});
+              particle_dest(pid, 0) - particle_info.position[0],
+              particle_dest(pid, 1) - particle_info.position[1],
+              particle_dest(pid, 2) - particle_info.position[2]});
           particle_info.direction[0] = direction[0];
           particle_info.direction[1] = direction[1];
           particle_info.direction[2] = direction[2];
@@ -213,17 +222,15 @@ void Transport(pumitally::PumiTallyImpl &pumi_tally, DG2Physics &physics,
 
         if (iter != 0) { // first iteration, we do not need to collide
           // -1 = reached destination → collide (randomize direction)
-          // -2 = hit material boundary → keep direction, just resample
-          //      collision distance with new material's properties below
+          // -2 = stopped at element face → keep direction, re-sample below
           if (last_exit[pid] == -1) {
             physics.collide_particle(particle_info, field_info);
           }
         }
 
         // Always sample a new collision distance.  For destinations (-1)
-        // this uses the post-collision direction; for material boundaries
-        // (-2) this re-samples with the current element's field values
-        // along the same direction.
+        // this uses the post-collision direction; for face-stops (-2)
+        // this re-samples along the same direction.
         physics.sample_collision_distance(particle_info, field_info);
 
         // Update particle position and direction

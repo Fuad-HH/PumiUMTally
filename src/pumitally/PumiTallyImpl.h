@@ -285,6 +285,11 @@ struct ParticleAtElemBoundary {
 
   // Per-particle alpha weight multiplier for tally contribution (1/|v|)
   Omega_h::Write<Omega_h::Real> alpha_;
+
+  // Per-particle saved direction for face-stop recovery.
+  // After rebuild() zeros particle_dest, the forward direction cannot be
+  // recovered from positions alone, so it is saved explicitly here.
+  Omega_h::Write<Omega_h::Real> direction_;
 };
 
 /**

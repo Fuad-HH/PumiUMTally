@@ -490,14 +490,15 @@ void apply_reflection_boundary_condition(
     const Omega_h::Write<Omega_h::LO> &lastExit,
     const Omega_h::Write<Omega_h::LO> &xFace,
     const Omega_h::Write<Omega_h::Real> &inter_points,
-    const Omega_h::Write<int> &material_ids, bool initial,
-    const Omega_h::Reals &face_normals) {
+    bool initial,
+    const Omega_h::Reals &face_normals,
+    Omega_h::Write<Omega_h::Real> saved_direction) {
 
   auto particle_destination = ptcls->get<1>();
   auto particle_origin = ptcls->get<0>();
 
-  const auto class_ids = mesh.get_array<int>(3, "class_id");
   const auto normals = face_normals;
+  auto saved_direction_l = saved_direction;
 
   auto checkExposedEdges =
       PS_LAMBDA(const int e, const int pid, const int mask) {
@@ -506,49 +507,33 @@ void apply_reflection_boundary_condition(
       bool hit_outer_boundary =
           ((next_elems[pid] == -1) && (elem_ids[pid] != -1));
 
-      bool hit_material_boundary = false;
-      if (!initial) {
-        if (next_elems[pid] != -1) {
-          if (class_ids[elem_ids[pid]] != class_ids[next_elems[pid]]) {
-            hit_material_boundary = true;
-            material_ids[pid] = class_ids[next_elems[pid]];
-          }
-        } else {
-          material_ids[pid] = -1;
-        }
-      }
-
-      // Material boundary: stop the particle at the intersection point.
-      // Keep it in the CURRENT element (where the point is on a face, so
-      // the barycentric check passes cleanly).  Signal to Transport via
-      // lastExit = -2 that this was a material boundary (not a destination
-      // and not a domain boundary), so Transport skips collision but
-      // re-samples the collision distance.
-      if (hit_material_boundary) {
+      if (reached_destination) {
+        ptcl_done[pid] = 1;
+      } else if (!hit_outer_boundary) {
+        // Interior face crossing: stop at the intersection point.
+        // Save forward direction BEFORE modifying positions — rebuild()
+        // zeros particle_dest, so direction must be saved explicitly.
+        Omega_h::Vector<3> fwd = {
+            particle_destination(pid, 0) - inter_points[pid * 3 + 0],
+            particle_destination(pid, 1) - inter_points[pid * 3 + 1],
+            particle_destination(pid, 2) - inter_points[pid * 3 + 2]};
+        fwd = Omega_h::normalize(fwd);
+        saved_direction_l[pid * 3 + 0] = fwd[0];
+        saved_direction_l[pid * 3 + 1] = fwd[1];
+        saved_direction_l[pid * 3 + 2] = fwd[2];
+        // Set BOTH origin and destination — rebuild() copies dest→orig
+        // then zeros dest, so both must be the face position.
+        // Leave next_elems as-is (the actual next element from the tracer)
+        // so UpdateCurrentElement advances the particle forward.
         particle_origin(pid, 0) = inter_points[pid * 3 + 0];
         particle_origin(pid, 1) = inter_points[pid * 3 + 1];
         particle_origin(pid, 2) = inter_points[pid * 3 + 2];
         particle_destination(pid, 0) = inter_points[pid * 3 + 0];
         particle_destination(pid, 1) = inter_points[pid * 3 + 1];
         particle_destination(pid, 2) = inter_points[pid * 3 + 2];
-        next_elems[pid] = elem_ids[pid];
         lastExit[pid] = -2;
-        material_ids[pid] = class_ids[next_elems[pid]];
-      }
-
-      ptcl_done[pid] =
-          (reached_destination || hit_material_boundary) ? 1 : ptcl_done[pid];
-
-      if (!initial) {
-        if (next_elems[pid] == -1) {
-          OMEGA_H_CHECK_PRINTF(
-              material_ids[pid] == -1,
-              "Error: next_elems[%d] is -1 but material_ids[%d] is %d\n",
-              pid, pid, material_ids[pid]);
-        }
-      }
-
-      if (hit_outer_boundary) {
+        ptcl_done[pid] = 1;
+      } else if (hit_outer_boundary) {
         Omega_h::LO hit_face =
             (lastExit[pid] == -1) ? xFace[pid] : lastExit[pid];
         xFace[pid] = hit_face;
@@ -778,6 +763,7 @@ ParticleAtElemBoundary::ParticleAtElemBoundary(const Omega_h::LO num_elements,
     : is_initial_track(true), nelem(num_elements),
       prev_xpoint(capacity * 3, 0.0, "prev_xpoint"),
       alpha_(capacity, 1.0, "alpha"),
+      direction_(capacity * 3, 0.0, "saved_direction"),
       multi_dim_tallies_active(false), active_n_filters(0),
       num_vertices(_num_vertices),
       boundary_condition(BoundaryCondition::VACUUM) {
@@ -917,11 +903,11 @@ void ParticleAtElemBoundary::operator()(
                   inter_faces, inter_points);
     break;
   case BoundaryCondition::REFLECTIVE: {
-    Omega_h::Write<int> mat_ids(ptcls->capacity(), 0, "material_ids");
     apply_reflection_boundary_condition(mesh, ptcls, elem_ids, next_elems,
                                         ptcl_done, last_exit, inter_faces,
-                                        inter_points, mat_ids,
-                                        is_initial_track, boundary_normals);
+                                        inter_points,
+                                        is_initial_track, boundary_normals,
+                                        direction_);
     break;
   }
   }
