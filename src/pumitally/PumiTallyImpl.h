@@ -34,7 +34,8 @@ struct TallyTimes {
 enum class SourceDistribution {
   UNIFORM, // Source uniformly distributed across the mesh
   EQUAL,   // Source at centroids of each element
-  ZERO     // in the zeroth element centroid
+  ZERO,    // in the zeroth element centroid
+  REGION   // Source distributed across elements of a specific class_id region
 };
 
 /**
@@ -291,6 +292,7 @@ struct ParticleAtElemBoundary {
  */
 struct PumiTallyImpl {
   Omega_h::LO num_particles = 1e5; //!< Number of Particles
+  int source_region_id = -1;       //!< class_id for REGION source distribution
   std::string oh_mesh_filename;    //!< Omega_h mesh file name
 
   Omega_h::Library oh_lib; //!< Omega_h Library (Holds MPI Comm)
@@ -325,11 +327,15 @@ struct PumiTallyImpl {
 
   PumiTallyImpl(const std::string &mesh_filename, Omega_h::LO num_ptcls,
                 int argc, char **argv,
-                SourceDistribution source_dist = SourceDistribution::ZERO);
+                SourceDistribution source_dist = SourceDistribution::ZERO,
+                int source_region_id = -1);
 
   ~PumiTallyImpl() = default;
 
   void InitializePUMIParticleStructure(Omega_h::Mesh &mesh);
+
+  void InitializePUMIParticleStructureForRegion(Omega_h::Mesh &mesh,
+                                                 int region_id);
 
   void LoadMeshAndInitParticles(int &argc, char **&argv);
 

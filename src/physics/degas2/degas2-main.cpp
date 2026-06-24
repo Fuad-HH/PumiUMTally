@@ -34,6 +34,7 @@ struct InputParameters {
   int max_iterations = 1000;
   pumitally::SourceDistribution source_distribution =
       pumitally::SourceDistribution::EQUAL;
+  int source_region_id = -1;  // class_id for REGION source distribution
 };
 
 void PrintInitialInfo(const std::string &mesh_name, int num_particles) noexcept;
@@ -80,7 +81,7 @@ int main(int argc, char *argv[]) {
     // Initialize PUMI-Tally and Read Fields
     auto pumi_tally = pumitally::PumiTallyImpl(
         input_params.mesh_name, input_params.num_particles, argc, argv,
-        input_params.source_distribution);
+        input_params.source_distribution, input_params.source_region_id);
     auto &mesh = pumi_tally.full_mesh;
     const auto centroids = pumitally::GetCentroids(mesh);
     Fields fields(centroids);
@@ -436,9 +437,18 @@ InputParameters::InputParameters(const int argc, char *argv[]) {
     source_distribution = pumitally::SourceDistribution::EQUAL;
   } else if (source_dist_str == "zero") {
     source_distribution = pumitally::SourceDistribution::ZERO;
+  } else if (source_dist_str.rfind("region-", 0) == 0) {
+    source_distribution = pumitally::SourceDistribution::REGION;
+    source_region_id = std::stoi(source_dist_str.substr(7));
+    if (source_region_id < 0) {
+      throw std::runtime_error(
+          "Invalid region ID in source distribution. Use 'region-N' where N is "
+          "a non-negative integer (e.g., 'region-5').");
+    }
   } else {
     throw std::runtime_error(
-        "Invalid source distribution. Use 'uniform' or 'equal'.");
+        "Invalid source distribution. Use 'uniform', 'equal', 'zero', or "
+        "'region-N' (e.g., 'region-5').");
   }
 }
 

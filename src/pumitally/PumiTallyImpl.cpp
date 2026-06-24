@@ -18,6 +18,8 @@ std::unique_ptr<PPPS> CreateParticleDS(const Omega_h::Mesh &mesh,
                                        pumipic::lid_t num_ptcls);
 
 void InitializeParticlesInElement0(Omega_h::Mesh &mesh, pumitally::PPPS *ptcls);
+void InitializeParticlesInRegion(Omega_h::Mesh &mesh, pumitally::PPPS *ptcls,
+                                 int region_id);
 
 Omega_h::Reals GetCentroids(Omega_h::Mesh &mesh, const bool add_tag) {
   const auto coords = mesh.coords();
@@ -57,8 +59,9 @@ void TallyTimes::PrintTimes() const {
 
 PumiTallyImpl::PumiTallyImpl(const std::string &mesh_filename,
                              const Omega_h::LO num_ptcls, int argc, char **argv,
-                             const SourceDistribution source_dist)
-    : num_particles(num_ptcls) {
+                             const SourceDistribution source_dist,
+                             int source_region_id)
+    : num_particles(num_ptcls), source_region_id(source_region_id) {
   oh_mesh_filename = mesh_filename;
 
   position_dev_buffer = Omega_h::Write<Omega_h::Real>(num_particles * 3, 0.0,
@@ -70,7 +73,16 @@ PumiTallyImpl::PumiTallyImpl(const std::string &mesh_filename,
 
   // todo can track lengths be here?
 
-  LoadMeshAndInitParticles(argc, argv);
+  // Read and partition the mesh (common to all source types)
+  ReadFullMesh(argc, argv);
+  Omega_h::Mesh mesh = PartitionMesh();
+
+  // Initialize particle structure based on source type
+  if (source_dist == SourceDistribution::REGION) {
+    InitializePUMIParticleStructureForRegion(mesh, source_region_id);
+  } else {
+    InitializePUMIParticleStructure(mesh);
+  }
 
   switch (source_dist) {
   case SourceDistribution::UNIFORM:
@@ -83,6 +95,10 @@ PumiTallyImpl::PumiTallyImpl(const std::string &mesh_filename,
     break;
   case SourceDistribution::ZERO:
     InitializeParticlesInElement0(*p_picparts->mesh(), pumipic_ptcls.get());
+    break;
+  case SourceDistribution::REGION:
+    InitializeParticlesInRegion(*p_picparts->mesh(), pumipic_ptcls.get(),
+                                source_region_id);
     break;
   default:
     throw std::runtime_error("Invalid source distribution");
@@ -1198,6 +1214,115 @@ std::unique_ptr<PPPS> CreateParticleDS(const Omega_h::Mesh &mesh,
   return ptcls;
 }
 
+std::unique_ptr<PPPS> CreateParticleDSForRegion(Omega_h::Mesh &mesh,
+                                                 pumipic::lid_t num_ptcls,
+                                                 int region_id) {
+  Omega_h::Int ne = mesh.nelems();
+  pumitally::PPPS::kkLidView ptcls_per_elem("ptcls_per_elem", ne);
+  pumitally::PPPS::kkGidView element_gids("element_gids", ne);
+
+  Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace> policy;
+
+  Omega_h::parallel_for(
+      ne, OMEGA_H_LAMBDA(const Omega_h::LO &i) { element_gids(i) = i; });
+
+  // Read class_id tag to identify elements in the region
+  const auto class_ids = mesh.get_array<int>(Omega_h::REGION, "class_id");
+  const auto coords = mesh.coords();
+  const auto e2v = mesh.ask_down(Omega_h::REGION, Omega_h::VERT).ab2b;
+
+  // Compute total volume of the region (using parallel_reduce like
+  // volume_of_3d_mesh does, but filtering by class_id)
+  Omega_h::Real total_vol = 0.0;
+  Kokkos::parallel_reduce(
+      "compute region total volume", ne,
+      KOKKOS_LAMBDA(const int e, Omega_h::Real &local_vol) {
+        if (class_ids[e] == region_id) {
+          const auto nodes = Omega_h::gather_verts<4>(e2v, e);
+          const Omega_h::Few<Omega_h::Vector<3>, 4> elem_coords =
+              Omega_h::gather_vectors<4, 3>(coords, nodes);
+          local_vol += volume_tet(elem_coords);
+        }
+      },
+      Kokkos::Sum<Omega_h::Real>(total_vol));
+
+  OMEGA_H_CHECK_PRINTF(total_vol > 0.0,
+                       "Region %d has zero total volume. Check that elements "
+                       "with class_id=%d exist in the mesh.\n",
+                       region_id, region_id);
+
+  // Distribute particles proportionally to element volume
+  Omega_h::parallel_for(
+      "distribute particles in region", ne, OMEGA_H_LAMBDA(const Omega_h::LO e) {
+        if (class_ids[e] == region_id) {
+          const auto nodes = Omega_h::gather_verts<4>(e2v, e);
+          const Omega_h::Few<Omega_h::Vector<3>, 4> elem_coords =
+              Omega_h::gather_vectors<4, 3>(coords, nodes);
+          Omega_h::Real vol = volume_tet(elem_coords);
+          Omega_h::Real volume_fraction = vol / total_vol;
+          ptcls_per_elem[e] =
+              static_cast<Omega_h::LO>(std::round(num_ptcls * volume_fraction));
+        } else {
+          ptcls_per_elem[e] = 0;
+        }
+      });
+
+  // Adjust for rounding errors: add/remove one particle at a time
+  // from region elements that can absorb the change without going negative.
+  Omega_h::LO tot_assigned = 0;
+  Kokkos::parallel_reduce(
+      ne,
+      KOKKOS_LAMBDA(const int i, Omega_h::LO &lsum) {
+        lsum += ptcls_per_elem[i];
+      },
+      tot_assigned);
+
+  int extra = num_ptcls - tot_assigned;
+  int add_remove = (extra > 0) ? 1 : -1;
+  int remaining = (extra > 0) ? extra : -extra;
+
+  // Build a host list of region element indices (cheap: region is typically
+  // a small fraction of the total mesh)
+  auto class_ids_host = Omega_h::HostRead<int>(class_ids);
+  std::vector<Omega_h::LO> region_elems;
+  region_elems.reserve(ne);
+  for (Omega_h::LO e = 0; e < ne && remaining > 0; e++) {
+    if (class_ids_host[e] == region_id) {
+      region_elems.push_back(e);
+    }
+  }
+
+  printf("[INFO] Region %d: %zu elements, total volume %.6e, assigned %d / %d "
+         "particles (adjusting by %d)\n",
+         region_id, region_elems.size(), total_vol, tot_assigned,
+         static_cast<int>(num_ptcls), extra);
+
+  // Distribute extra across elements round-robin, never going below 0
+  if (!region_elems.empty()) {
+    for (int i = 0; i < remaining; i++) {
+      Omega_h::LO e = region_elems[i % region_elems.size()];
+      if (add_remove > 0 || ptcls_per_elem[e] > 0) {
+        Kokkos::atomic_add(&ptcls_per_elem[e], add_remove);
+      }
+    }
+  } else if (extra > 0) {
+    // No elements in region yet we have particles to assign — fatal
+    OMEGA_H_CHECK_PRINTF(false,
+                         "Region %d has no elements but %d particles were "
+                         "requested. Cannot distribute.\n",
+                         region_id, static_cast<int>(num_ptcls));
+  }
+
+  printf("PumiPIC Using CPU for simulation...\n");
+  policy =
+      Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace>(10000, Kokkos::AUTO());
+
+  auto ptcls = std::make_unique<pumipic::DPS<pumitally::PPParticle>>(
+      policy, ne, num_ptcls, ptcls_per_elem, element_gids);
+
+  return ptcls;
+}
+
 void InitializeParticlesInElement0(Omega_h::Mesh &mesh,
                                    pumitally::PPPS *ptcls) {
   const auto &coords = mesh.coords();
@@ -1236,6 +1361,38 @@ void InitializeParticlesInElement0(Omega_h::Mesh &mesh,
                         "set is_initial_track particle positions");
 }
 
+void InitializeParticlesInRegion(Omega_h::Mesh &mesh,
+                                  pumitally::PPPS *ptcls,
+                                  int /*region_id*/) {
+  const auto &coords = mesh.coords();
+  const auto &tet2node = mesh.ask_down(Omega_h::REGION, Omega_h::VERT).ab2b;
+
+  auto init_loc = ptcls->get<0>();
+  auto pids = ptcls->get<2>();
+  auto in_fly = ptcls->get<3>();
+  auto p_wgt = ptcls->get<4>();
+
+  auto set_initial_positions =
+      PS_LAMBDA(const int &e, const int &pid, const int &mask) {
+    if (mask > 0) {
+      // Compute centroid of the current element
+      const auto nodes = Omega_h::gather_verts<4>(tet2node, e);
+      const Omega_h::Few<Omega_h::Vector<3>, 4> tet_node_coords =
+          Omega_h::gather_vectors<4, 3>(coords, nodes);
+      Omega_h::Vector<3> centroid = o::average(tet_node_coords);
+
+      pids(pid) = pid;
+      in_fly(pid) = 1;
+      init_loc(pid, 0) = centroid[0];
+      init_loc(pid, 1) = centroid[1];
+      init_loc(pid, 2) = centroid[2];
+      p_wgt(pid) = 1.0;
+    }
+  };
+  pumipic::parallel_for(ptcls, set_initial_positions,
+                        "set region particle positions");
+}
+
 Omega_h::Mesh PumiTallyImpl::PartitionMesh() {
   const Omega_h::Write<Omega_h::LO> owners(full_mesh.nelems(), 0, "owners");
   p_picparts = std::make_unique<pumipic::Mesh>(full_mesh, Omega_h::LOs(owners));
@@ -1258,6 +1415,23 @@ void PumiTallyImpl::InitializePUMIParticleStructure(Omega_h::Mesh &mesh) {
   printf("PumiPIC Mesh and data structure created with %d and %d as particle "
          "structure capacity\n",
          p_picparts->mesh()->nelems(), pumipic_ptcls->capacity());
+}
+
+void PumiTallyImpl::InitializePUMIParticleStructureForRegion(
+    Omega_h::Mesh &mesh, int region_id) {
+  pumipic_ptcls = CreateParticleDSForRegion(mesh, num_particles, region_id);
+  InitializeParticlesInRegion(mesh, pumipic_ptcls.get(), region_id);
+  p_pumi_particle_at_elem_boundary_handler =
+      std::make_unique<pumitally::ParticleAtElemBoundary>(
+          mesh.nelems(), mesh.nverts(), pumipic_ptcls->capacity());
+
+  // Cache element-to-vertex connectivity for node tally support
+  p_pumi_particle_at_elem_boundary_handler->elem2vert =
+      mesh.ask_down(Omega_h::REGION, Omega_h::VERT).ab2b;
+
+  printf("PumiPIC Mesh and data structure created with %d and %d as particle "
+         "structure capacity (region %d)\n",
+         p_picparts->mesh()->nelems(), pumipic_ptcls->capacity(), region_id);
 }
 
 void PumiTallyImpl::ReadFullMesh(int &argc, char **&argv) {
