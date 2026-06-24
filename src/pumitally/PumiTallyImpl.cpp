@@ -1104,39 +1104,42 @@ void ParticleAtElemBoundary::EvaluateFlux(
 void ParticleAtElemBoundary::FinalizeTallies(
     Omega_h::Mesh &full_mesh, const std::string &filename,
     const std::vector<Omega_h::LO> &source_dist) const {
-  // 1. Compute and attach element volumes
-  {
-    const auto &el2n = full_mesh.ask_down(Omega_h::REGION, Omega_h::VERT).ab2b;
-    const auto &coords = full_mesh.coords();
-    Omega_h::Write<Omega_h::Real> tet_volumes(nelem, -1.0, "tet_volumes");
+  // 1. Compute element volumes
+  const auto &el2n = full_mesh.ask_down(Omega_h::REGION, Omega_h::VERT).ab2b;
+  const auto &coords = full_mesh.coords();
+  Omega_h::Write<Omega_h::Real> tet_volumes(nelem, -1.0, "tet_volumes");
 
-    auto compute_volume = OMEGA_H_LAMBDA(const Omega_h::LO elem_id) {
-      const auto elem_verts = Omega_h::gather_verts<4>(el2n, elem_id);
-      const auto elem_vert_coords =
-          Omega_h::gather_vectors<4, 3>(coords, elem_verts);
-      const auto b = Omega_h::simplex_basis<3, 3>(elem_vert_coords);
-      tet_volumes[elem_id] = Omega_h::simplex_size_from_basis(b);
-    };
-    Omega_h::parallel_for(nelem, compute_volume, "compute element volumes");
-    full_mesh.add_tag(Omega_h::REGION, "volume", 1, Omega_h::Reals(tet_volumes));
-  }
+  auto compute_volume = OMEGA_H_LAMBDA(const Omega_h::LO elem_id) {
+    const auto elem_verts = Omega_h::gather_verts<4>(el2n, elem_id);
+    const auto elem_vert_coords =
+        Omega_h::gather_vectors<4, 3>(coords, elem_verts);
+    const auto b = Omega_h::simplex_basis<3, 3>(elem_vert_coords);
+    tet_volumes[elem_id] = Omega_h::simplex_size_from_basis(b);
+  };
+  Omega_h::parallel_for(nelem, compute_volume, "compute element volumes");
 
-  // 1b. Attach source distribution (particles per element) if available
+  // 1b. Attach source distribution normalized by volume if available
   if (!source_dist.empty()) {
     OMEGA_H_CHECK_PRINTF(
         source_dist.size() == static_cast<size_t>(nelem),
         "Source distribution size (%zu) must match number of elements (%d)\n",
         source_dist.size(), nelem);
-    // Convert from LO to Real so VTK can display it
+    auto vols_host = Omega_h::HostRead<Omega_h::Real>(Omega_h::Reals(tet_volumes));
     Omega_h::HostWrite<Omega_h::Real> source_host(nelem, "source_host");
     for (Omega_h::LO e = 0; e < nelem; ++e) {
-      source_host[e] = static_cast<Omega_h::Real>(source_dist[e]);
+      source_host[e] = (vols_host[e] > 0.0)
+                           ? static_cast<Omega_h::Real>(source_dist[e]) /
+                                 vols_host[e]
+                           : 0.0;
     }
     Omega_h::Write<Omega_h::Real> source_write(source_host);
     full_mesh.add_tag(Omega_h::REGION, "source", 1,
                       Omega_h::Reals(source_write));
-    printf("[INFO] Added source tag on REGION (particles per element)\n");
+    printf("[INFO] Added source tag on REGION (particles per element / volume)\n");
   }
+
+  // Attach volume tag
+  full_mesh.add_tag(Omega_h::REGION, "volume", 1, Omega_h::Reals(tet_volumes));
 
   // 2. Multi-dimensional element tally: single tag with ncomps = total_filter_bins
   if (element_tally_spec.is_initialized) {
