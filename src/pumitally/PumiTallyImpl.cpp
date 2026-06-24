@@ -1141,27 +1141,32 @@ void ParticleAtElemBoundary::FinalizeTallies(
   // Attach volume tag
   full_mesh.add_tag(Omega_h::REGION, "volume", 1, Omega_h::Reals(tet_volumes));
 
-  // 2. Multi-dimensional element tally: single tag with ncomps = total_filter_bins
+  // Host mirror of volumes for normalization
+  auto vols_host = Omega_h::HostRead<Omega_h::Real>(Omega_h::Reals(tet_volumes));
+
+  // 2. Multi-dimensional element tally normalized by element volume
   if (element_tally_spec.is_initialized) {
     const auto &spec = element_tally_spec;
     auto elem_data = element_tallies.data();
     Omega_h::HostWrite<Omega_h::Real> elem_host(nelem * spec.total_filter_bins,
                                                  "element_tally_host");
     for (Omega_h::LO e = 0; e < nelem; ++e) {
+      const double inv_vol = (vols_host[e] > 0.0) ? 1.0 / vols_host[e] : 0.0;
       for (unsigned int c = 0; c < spec.total_filter_bins; ++c) {
         elem_host[e * spec.total_filter_bins + c] =
-            elem_data[e * spec.total_filter_bins + c];
+            elem_data[e * spec.total_filter_bins + c] * inv_vol;
       }
     }
     Omega_h::Write<Omega_h::Real> elem_write(elem_host);
     full_mesh.add_tag(Omega_h::REGION, "element_tally",
                       static_cast<int>(spec.total_filter_bins),
                       Omega_h::Reals(elem_write));
-    printf("[INFO] Added element_tally tag on REGION: ncomps=%u (nelem=%d)\n",
+    printf("[INFO] Added element_tally tag on REGION: ncomps=%u (nelem=%d) "
+           "[normalized by volume]\n",
            spec.total_filter_bins, nelem);
   }
 
-  // 3. Multi-dimensional node tally: single tag with ncomps = total_filter_bins
+  // 3. Multi-dimensional node tally (not volume-normalized)
   if (node_tally_spec.is_initialized) {
     const auto &spec = node_tally_spec;
     auto node_data = node_tallies.data();
