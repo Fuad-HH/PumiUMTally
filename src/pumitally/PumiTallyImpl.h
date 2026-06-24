@@ -36,7 +36,8 @@ enum class SourceDistribution {
   EQUAL,   // Source at centroids of each element
   ZERO,    // in the zeroth element centroid
   REGION,  // Source distributed across elements of a specific class_id region
-  ELEMENTS // Source read from element-source.csv (element_id, count)
+  ELEMENTS,// Source read from element-source.csv (element_id, count)
+  WALL     // Source on boundary elements with exponential radial distribution
 };
 
 /**
@@ -345,6 +346,8 @@ struct PumiTallyImpl {
 
   void InitializePUMIParticleStructureFromCSV(Omega_h::Mesh &mesh,
                                                const std::string &csv_filename);
+
+  void InitializePUMIParticleStructureForWall(Omega_h::Mesh &mesh);
 
   void LoadMeshAndInitParticles(int &argc, char **&argv);
 

@@ -450,10 +450,12 @@ InputParameters::InputParameters(const int argc, char *argv[]) {
   } else if (source_dist_str == "elements") {
     source_distribution = pumitally::SourceDistribution::ELEMENTS;
     source_csv_filename = "element-source.csv";
+  } else if (source_dist_str == "wall") {
+    source_distribution = pumitally::SourceDistribution::WALL;
   } else {
     throw std::runtime_error(
         "Invalid source distribution. Use 'uniform', 'equal', 'zero', "
-        "'region-N' (e.g., 'region-5'), or 'elements'.");
+        "'region-N' (e.g., 'region-5'), 'elements', or 'wall'.");
   }
 }
 

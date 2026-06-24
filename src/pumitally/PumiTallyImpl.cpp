@@ -11,6 +11,7 @@
 #include <pumipic_mesh.hpp>
 #include <pumipic_ptcl_ops.hpp>
 
+#include <cmath>
 #include <fstream>
 #include <sstream>
 
@@ -24,6 +25,10 @@ std::unique_ptr<PPPS> CreateParticleDS(const Omega_h::Mesh &mesh,
 std::unique_ptr<PPPS> CreateParticleDSFromCSV(
     const Omega_h::Mesh &mesh, pumipic::lid_t num_ptcls,
     const std::string &csv_filename,
+    std::vector<Omega_h::LO> *out_ptcls_per_elem);
+
+std::unique_ptr<PPPS> CreateParticleDSForWall(
+    Omega_h::Mesh &mesh, pumipic::lid_t num_ptcls,
     std::vector<Omega_h::LO> *out_ptcls_per_elem);
 
 void InitializeParticlesInElement0(Omega_h::Mesh &mesh, pumitally::PPPS *ptcls);
@@ -94,6 +99,8 @@ PumiTallyImpl::PumiTallyImpl(const std::string &mesh_filename,
     InitializePUMIParticleStructureForRegion(mesh, source_region_id);
   } else if (source_dist == SourceDistribution::ELEMENTS) {
     InitializePUMIParticleStructureFromCSV(mesh, source_csv_filename);
+  } else if (source_dist == SourceDistribution::WALL) {
+    InitializePUMIParticleStructureForWall(mesh);
   } else {
     InitializePUMIParticleStructure(mesh);
   }
@@ -115,6 +122,10 @@ PumiTallyImpl::PumiTallyImpl(const std::string &mesh_filename,
                                 source_region_id);
     break;
   case SourceDistribution::ELEMENTS:
+    InitializeParticlesInRegion(*p_picparts->mesh(), pumipic_ptcls.get(),
+                                0 /*unused*/);
+    break;
+  case SourceDistribution::WALL:
     InitializeParticlesInRegion(*p_picparts->mesh(), pumipic_ptcls.get(),
                                 0 /*unused*/);
     break;
@@ -1468,6 +1479,153 @@ std::unique_ptr<PPPS> CreateParticleDSFromCSV(
   return ptcls;
 }
 
+std::unique_ptr<PPPS> CreateParticleDSForWall(
+    Omega_h::Mesh &mesh, pumipic::lid_t num_ptcls,
+    std::vector<Omega_h::LO> *out_ptcls_per_elem) {
+  const Omega_h::Int ne = mesh.nelems();
+  const Omega_h::Int nfaces = mesh.nfaces();
+  const auto dim = mesh.dim();
+
+  // ---- identify exposed (boundary) faces ----
+  const auto exposed_faces = Omega_h::mark_exposed_sides(&mesh);
+  const auto f2e = mesh.ask_up(dim - 1, dim).ab2b;
+  const auto f2e_off = mesh.ask_up(dim - 1, dim).a2ab;
+  const auto f2v = mesh.ask_down(dim - 1, Omega_h::VERT).ab2b;
+  const auto e2v = mesh.ask_down(dim, Omega_h::VERT).ab2b;
+  const auto coords = mesh.coords();
+
+  // ---- host mirrors ----
+  auto exposed_h = Omega_h::HostRead<Omega_h::Byte>(exposed_faces);
+  auto f2e_h = Omega_h::HostRead<Omega_h::LO>(f2e);
+  auto f2e_off_h = Omega_h::HostRead<Omega_h::LO>(f2e_off);
+  auto f2v_h = Omega_h::HostRead<Omega_h::LO>(f2v);
+  auto e2v_h = Omega_h::HostRead<Omega_h::LO>(e2v);
+  auto coords_h = Omega_h::HostRead<Omega_h::Real>(coords);
+
+  // ---- per-element accumulators ----
+  std::vector<bool> is_wall(ne, false);
+  std::vector<double> wall_area(ne, 0.0);
+  Omega_h::LO n_wall = 0;
+
+  for (Omega_h::LO f = 0; f < nfaces; ++f) {
+    if (!exposed_h[f]) continue;
+    const Omega_h::LO elem = f2e_h[f2e_off_h[f]];
+    if (!is_wall[elem]) {
+      is_wall[elem] = true;
+      ++n_wall;
+    }
+    // face area = 0.5 * | cross(e1, e2) |
+    const auto v0 = f2v_h[f * 3 + 0];
+    const auto v1 = f2v_h[f * 3 + 1];
+    const auto v2 = f2v_h[f * 3 + 2];
+    const double e1x = coords_h[v1 * 3 + 0] - coords_h[v0 * 3 + 0];
+    const double e1y = coords_h[v1 * 3 + 1] - coords_h[v0 * 3 + 1];
+    const double e1z = coords_h[v1 * 3 + 2] - coords_h[v0 * 3 + 2];
+    const double e2x = coords_h[v2 * 3 + 0] - coords_h[v0 * 3 + 0];
+    const double e2y = coords_h[v2 * 3 + 1] - coords_h[v0 * 3 + 1];
+    const double e2z = coords_h[v2 * 3 + 2] - coords_h[v0 * 3 + 2];
+    const double cx = e1y * e2z - e1z * e2y;
+    const double cy = e1z * e2x - e1x * e2z;
+    const double cz = e1x * e2y - e1y * e2x;
+    wall_area[elem] += 0.5 * std::sqrt(cx * cx + cy * cy + cz * cz);
+  }
+
+  if (n_wall == 0) {
+    throw std::runtime_error(
+        "No boundary elements found for WALL source distribution.");
+  }
+
+  // ---- source strength via user formula ----
+  constexpr double Rmin = 0.143942;  // meters
+  constexpr double Smax = 1e20;       // particles per m² per second
+  constexpr double lambda = 0.05;     // decay length (m)
+
+  std::vector<double> source_strength(ne, 0.0);
+  double total_source = 0.0;
+
+  for (Omega_h::LO e = 0; e < ne; ++e) {
+    if (!is_wall[e] || wall_area[e] <= 0.0) continue;
+    // centroid R = sqrt(x^2 + z^2)
+    double cx = 0.0, cy = 0.0, cz = 0.0;
+    for (int v = 0; v < 4; ++v) {
+      const auto vi = e2v_h[e * 4 + v];
+      cx += coords_h[vi * 3 + 0];
+      cy += coords_h[vi * 3 + 1];
+      cz += coords_h[vi * 3 + 2];
+    }
+    cx /= 4.0;
+    cz /= 4.0;
+    const double R = std::sqrt(cx * cx + cz * cz);
+
+    source_strength[e] =
+        Smax * std::exp(-(R - Rmin) / lambda) / wall_area[e];
+    total_source += source_strength[e];
+  }
+
+  if (total_source <= 0.0) {
+    throw std::runtime_error("Total wall source strength is zero.");
+  }
+
+  // ---- distribute particles proportionally ----
+  pumitally::PPPS::kkLidView ptcls_per_elem("ptcls_per_elem", ne);
+  pumitally::PPPS::kkGidView element_gids("element_gids", ne);
+  Omega_h::parallel_for(
+      ne, OMEGA_H_LAMBDA(const Omega_h::LO &i) {
+        element_gids(i) = i;
+        ptcls_per_elem(i) = 0;
+      });
+
+  Omega_h::LO tot_assigned = 0;
+  for (Omega_h::LO e = 0; e < ne; ++e) {
+    if (source_strength[e] > 0.0) {
+      const Omega_h::LO n =
+          static_cast<Omega_h::LO>(std::round(num_ptcls * source_strength[e] /
+                                              total_source));
+      ptcls_per_elem(e) = n;
+      tot_assigned += n;
+    }
+  }
+
+  // ---- rounding adjustment (round-robin over wall elements) ----
+  int extra = static_cast<int>(num_ptcls) - static_cast<int>(tot_assigned);
+  if (extra != 0) {
+    const int add_remove = (extra > 0) ? 1 : -1;
+    int remaining = std::abs(extra);
+    // collect wall element indices
+    std::vector<Omega_h::LO> wall_elems;
+    wall_elems.reserve(n_wall);
+    for (Omega_h::LO e = 0; e < ne; ++e) {
+      if (source_strength[e] > 0.0) wall_elems.push_back(e);
+    }
+    for (int i = 0; i < remaining; ++i) {
+      const Omega_h::LO e = wall_elems[i % wall_elems.size()];
+      if (add_remove > 0 || ptcls_per_elem(e) > 0) {
+        Kokkos::atomic_add(&ptcls_per_elem(e), add_remove);
+      }
+    }
+  }
+
+  printf("[INFO] Wall source: %d boundary elements, total source %.6e, "
+         "%d particles assigned\n",
+         n_wall, total_source, static_cast<int>(num_ptcls));
+
+  // ---- save to host vector ----
+  if (out_ptcls_per_elem) {
+    out_ptcls_per_elem->resize(ne);
+    auto h = Kokkos::create_mirror_view(ptcls_per_elem);
+    Kokkos::deep_copy(h, ptcls_per_elem);
+    for (Omega_h::LO i = 0; i < ne; ++i) (*out_ptcls_per_elem)[i] = h(i);
+  }
+
+  // ---- build DPS ----
+  printf("PumiPIC Using CPU for simulation...\n");
+  auto policy =
+      Kokkos::TeamPolicy<Kokkos::DefaultExecutionSpace>(10000, Kokkos::AUTO());
+
+  return std::make_unique<pumipic::DPS<pumitally::PPParticle>>(
+      policy, ne, num_ptcls, ptcls_per_elem, element_gids);
+}
+
 void InitializeParticlesInElement0(Omega_h::Mesh &mesh,
                                    pumitally::PPPS *ptcls) {
   const auto &coords = mesh.coords();
@@ -1599,6 +1757,21 @@ void PumiTallyImpl::InitializePUMIParticleStructureFromCSV(
          "structure capacity (CSV source: %s)\n",
          p_picparts->mesh()->nelems(), pumipic_ptcls->capacity(),
          csv_filename.c_str());
+}
+
+void PumiTallyImpl::InitializePUMIParticleStructureForWall(
+    Omega_h::Mesh &mesh) {
+  pumipic_ptcls =
+      CreateParticleDSForWall(mesh, num_particles, &source_ptcls_per_elem);
+  InitializeParticlesInRegion(mesh, pumipic_ptcls.get(), 0 /*unused*/);
+  p_pumi_particle_at_elem_boundary_handler =
+      std::make_unique<pumitally::ParticleAtElemBoundary>(
+          mesh.nelems(), mesh.nverts(), pumipic_ptcls->capacity());
+  p_pumi_particle_at_elem_boundary_handler->elem2vert =
+      mesh.ask_down(Omega_h::REGION, Omega_h::VERT).ab2b;
+  printf("PumiPIC Mesh and data structure created with %d and %d as particle "
+         "structure capacity (wall source)\n",
+         p_picparts->mesh()->nelems(), pumipic_ptcls->capacity());
 }
 
 void PumiTallyImpl::ReadFullMesh(int &argc, char **&argv) {

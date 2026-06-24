@@ -228,8 +228,8 @@ public:
     double l = -Kokkos::log(x) /
                (field_info.electron_density * sigma_ion +
                 field_info.ion_density * sigma_cx) *
-               0.01; // m. n in cm^-3
-    l = l * 1e6;
+               1e4; // m. n in m^-3, cx in cm^2. Net unit m^3/cm^2. Conversion factor 1e4
+    //l = l * 1e6; 
 
     //printf("P %d l %.15f\n", particle_info.particle_index, l);
     particle_info.position[0] += l * particle_info.direction[0];
